@@ -1,0 +1,408 @@
+// FINEKO Ads — схема БД. Джерело правди проєкту: ../../../ПРОЄКТ-платформа-реклами.md
+// Коментарі лише // і /// (блокові ламають Prisma).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Проєкт (компанія). Свій у цій системі; у SSO лише акаунти й доступи до id проєктів.
+model Project {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  /// Ключ для воронок Flows (Bearer): запуск синхронізації, звіти. Не дає права міняти рекламу.
+  apiKey            String   @unique @map("api_key")
+  timezone          String   @default("Europe/Kyiv")
+  currency          String   @default("UAH")
+  /// Запобіжник 10: денний ліміт витрат на проєкт у доларах. За замовчуванням 10 (рішення власника 16.11.2026).
+  dailyLimitUsd     Decimal  @default(10) @map("daily_limit_usd") @db.Decimal(12, 2)
+  usdRate           Decimal  @default(42) @map("usd_rate") @db.Decimal(12, 4)
+  /// Запобіжник 15: 0 дивиться · 1 радить · 2 сам вимикає · 3 сам міняє бюджети.
+  autonomyLevel     Int      @default(0) @map("autonomy_level")
+  /// Запобіжник 16: режим «проба» — дії лише записуються в журнал.
+  dryRun            Boolean  @default(true) @map("dry_run")
+  targetSaleCost    Decimal? @map("target_sale_cost") @db.Decimal(12, 2)
+  content2ProjectId String?  @map("content2_project_id")
+  reportChatId      String?  @map("report_chat_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  connections Connection[]
+  campaigns   Campaign[]
+  adSets      AdSet[]
+  ads         Ad[]
+  elements    Element[]
+  stepEvents  StepEvent[]
+  clicks      Click[]
+  audiences   Audience[]
+  bundles     Bundle[]
+  clients     Client[]
+  actions     ActionLog[]
+  syncRuns    SyncRun[]
+
+  @@map("projects")
+}
+
+// Підключення зовнішнього джерела: рекламний кабінет (meta, google) або сайт (site).
+model Connection {
+  id          String    @id @default(cuid())
+  projectId   String    @map("project_id")
+  channel     String // meta | google | site
+  name        String
+  /// meta: id кабінету без префікса act_; site: базова адреса АПІ.
+  externalId  String    @map("external_id")
+  /// Несекретні налаштування й те, що повернула перевірка (назва кабінету, валюта, часовий пояс, стан).
+  config      Json      @default("{}")
+  /// Ключі зашифровані (AES-256-GCM, lib/secrets.js). Назовні не віддаються ніколи.
+  secretRead  String?   @map("secret_read") @db.Text
+  secretWrite String?   @map("secret_write") @db.Text
+  status      String    @default("new") // new | ok | error | blocked
+  lastCheckAt DateTime? @map("last_check_at")
+  lastSyncAt  DateTime? @map("last_sync_at")
+  lastError   String?   @map("last_error") @db.Text
+  /// Курсор стрічки подій сайту (after_id).
+  cursor      String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@unique([projectId, channel, externalId])
+  @@index([projectId])
+  @@map("connections")
+}
+
+model Campaign {
+  id              String    @id @default(cuid())
+  projectId       String    @map("project_id")
+  connectionId    String    @map("connection_id")
+  channel         String
+  externalId      String    @map("external_id")
+  name            String
+  status          String?
+  effectiveStatus String?   @map("effective_status")
+  objective       String?
+  /// У валюті кабінету, звичайні одиниці (не копійки).
+  dailyBudget     Decimal?  @map("daily_budget") @db.Decimal(14, 2)
+  extCreatedAt    DateTime? @map("ext_created_at")
+  raw             Json      @default("{}")
+  syncedAt        DateTime  @default(now()) @map("synced_at")
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  adSets     AdSet[]
+  ads        Ad[]
+
+  @@unique([connectionId, externalId])
+  @@index([projectId])
+  @@map("campaigns")
+}
+
+model AdSet {
+  id               String    @id @default(cuid())
+  projectId        String    @map("project_id")
+  campaignId       String    @map("campaign_id")
+  channel          String
+  externalId       String    @map("external_id")
+  name             String
+  status           String?
+  effectiveStatus  String?   @map("effective_status")
+  dailyBudget      Decimal?  @map("daily_budget") @db.Decimal(14, 2)
+  optimizationGoal String?   @map("optimization_goal")
+  /// Запобіжник 8: чи група ще «навчається».
+  learningStage    String?   @map("learning_stage")
+  targeting        Json      @default("{}")
+  extCreatedAt     DateTime? @map("ext_created_at")
+  extUpdatedAt     DateTime? @map("ext_updated_at")
+  syncedAt         DateTime  @default(now()) @map("synced_at")
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads      Ad[]
+
+  @@unique([campaignId, externalId])
+  @@index([projectId])
+  @@map("ad_sets")
+}
+
+model Ad {
+  id              String    @id @default(cuid())
+  projectId       String    @map("project_id")
+  campaignId      String    @map("campaign_id")
+  adSetId         String    @map("ad_set_id")
+  channel         String
+  externalId      String    @map("external_id")
+  name            String
+  status          String?
+  effectiveStatus String?   @map("effective_status")
+  // Креатив (те, що бачить людина)
+  creativeId      String?   @map("creative_id")
+  title           String?   @db.Text
+  body            String?   @db.Text
+  imageUrl        String?   @map("image_url") @db.Text
+  thumbnailUrl    String?   @map("thumbnail_url") @db.Text
+  videoId         String?   @map("video_id")
+  linkUrl         String?   @map("link_url") @db.Text
+  cta             String?
+  previewUrl      String?   @map("preview_url") @db.Text
+  /// Зв'язок із креативом у контент-платформі (заповнюється, коли креатив створено звідти).
+  content2PostId  String?   @map("content2_post_id")
+  extCreatedAt    DateTime? @map("ext_created_at")
+  extUpdatedAt    DateTime? @map("ext_updated_at")
+  syncedAt        DateTime  @default(now()) @map("synced_at")
+
+  project  Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaign Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adSet    AdSet          @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  insights InsightDaily[]
+  bundles  BundleAd[]
+
+  @@unique([adSetId, externalId])
+  @@index([projectId, externalId])
+  @@index([projectId, effectiveStatus])
+  @@map("ads")
+}
+
+// Витрати й покази по оголошенню за день (день за часом кабінету).
+model InsightDaily {
+  id          String   @id @default(cuid())
+  adId        String   @map("ad_id")
+  date        DateTime @db.Date
+  spend       Decimal  @default(0) @db.Decimal(14, 2)
+  currency    String   @default("USD")
+  impressions Int      @default(0)
+  reach       Int      @default(0)
+  clicks      Int      @default(0)
+  linkClicks  Int      @default(0) @map("link_clicks")
+  frequency   Decimal? @db.Decimal(8, 3)
+  /// Дії за підрахунком самого каналу (заявки, розмови, покупки) — довідково, наші продажі рахуємо зі своїх джерел.
+  actions     Json     @default("{}")
+
+  ad Ad @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@unique([adId, date])
+  @@index([date])
+  @@map("insights_daily")
+}
+
+// Елемент шляху: сайт, воронка Flows, календар, Instagram, ручний крок. Нові типи — без зміни схеми.
+model Element {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  type      String // site | flows | calendar | instagram | manual
+  name      String
+  /// site: id сайту в АПІ сайтів; flows: botId; calendar: slug.
+  ref       String?
+  config    Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  steps   Step[]
+
+  @@unique([projectId, type, ref])
+  @@map("elements")
+}
+
+model Step {
+  id        String  @id @default(cuid())
+  elementId String  @map("element_id")
+  key       String
+  title     String
+  order     Int     @default(0)
+  /// Однаковий order + різний branch = розгалуження.
+  branch    String?
+  isSale    Boolean @default(false) @map("is_sale")
+  /// Куди веде далі: "flows:<slug>", "calendar:<slug>", "site:<id>".
+  leadsTo   String? @map("leads_to")
+  /// Сума продажу за замовчуванням, коли джерело не передає суму (етап бота «Оплатив», ручна позначка).
+  defaultAmount Decimal? @map("default_amount") @db.Decimal(14, 2)
+
+  element Element @relation(fields: [elementId], references: [id], onDelete: Cascade)
+
+  @@unique([elementId, key])
+  @@map("steps")
+}
+
+// Сира подія кроку (із сайту, бота, календаря, вручну) з прив'язкою до оголошення.
+model StepEvent {
+  id           String   @id @default(cuid())
+  projectId    String   @map("project_id")
+  elementType  String   @map("element_type")
+  elementRef   String   @map("element_ref")
+  /// id події в джерелі — захист від подвійного запису.
+  sourceId     String   @map("source_id")
+  stepKey      String   @map("step_key")
+  ts           DateTime
+  personKey    String?  @map("person_key")
+  clickId      String?  @map("click_id")
+  variant      String?
+  adExtId      String?  @map("ad_ext_id")
+  adSetExtId   String?  @map("ad_set_ext_id")
+  campaignExtId String? @map("campaign_ext_id")
+  utmSource    String?  @map("utm_source")
+  amount       Decimal? @db.Decimal(14, 2)
+  currency     String?
+  orderId      String?  @map("order_id")
+  isTest       Boolean  @default(false) @map("is_test")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, elementType, elementRef, sourceId])
+  @@index([projectId, ts])
+  @@index([projectId, adExtId, stepKey])
+  @@index([projectId, clickId])
+  @@map("step_events")
+}
+
+// Код заходу з сайту → оголошення (щоб бот із кодом у посиланні «знав» рекламу).
+model Click {
+  id            String   @id @default(cuid())
+  projectId     String   @map("project_id")
+  clickId       String   @map("click_id")
+  personKey     String?  @map("person_key")
+  ts            DateTime
+  adExtId       String?  @map("ad_ext_id")
+  adSetExtId    String?  @map("ad_set_ext_id")
+  campaignExtId String?  @map("campaign_ext_id")
+  utmSource     String?  @map("utm_source")
+  utmContent    String?  @map("utm_content")
+  placement     String?
+  site          String?
+  variant       String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, clickId])
+  @@map("clicks")
+}
+
+// Аудиторія: сам опис (болі, цілі) живе в Persona контент-платформи; тут лише рекламні налаштування.
+model Audience {
+  id                String   @id @default(cuid())
+  projectId         String   @map("project_id")
+  content2PersonaId String?  @map("content2_persona_id")
+  name              String
+  description       String?  @db.Text
+  targeting         Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bundles Bundle[]
+
+  @@map("audiences")
+}
+
+// Зв'язка: аудиторія × обіцянка × шлях × креативи + правило тесту.
+model Bundle {
+  id            String    @id @default(cuid())
+  projectId     String    @map("project_id")
+  name          String
+  /// Короткий код зв'язки. Кампанія з «[код]» у назві належить цій зв'язці (так оголошення прив'язуються без ручної роботи).
+  code          String?
+  hypothesis    String?   @db.Text
+  audienceId    String?   @map("audience_id")
+  product       String?
+  promise       String?   @db.Text
+  angle         String?   @db.Text
+  /// Шлях: упорядкований список {elementId, note}.
+  path          Json      @default("[]")
+  status        String    @default("draft") // draft | test | works | fails | scale
+  testBudgetUsd Decimal?  @map("test_budget_usd") @db.Decimal(12, 2)
+  stopRule      Json      @default("{}") @map("stop_rule")
+  verdict       String?   @db.Text
+  startedAt     DateTime? @map("started_at")
+  endedAt       DateTime? @map("ended_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  project  Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  audience Audience?  @relation(fields: [audienceId], references: [id], onDelete: SetNull)
+  ads      BundleAd[]
+
+  @@index([projectId, status])
+  @@map("bundles")
+}
+
+model BundleAd {
+  bundleId String @map("bundle_id")
+  adId     String @map("ad_id")
+
+  bundle Bundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  ad     Ad     @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@id([bundleId, adId])
+  @@map("bundle_ads")
+}
+
+// Ручні позначки, поки нема CRM для експертного бізнесу.
+model Client {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+  label       String
+  source      String? // site | flows | instagram | manual
+  clickId     String?  @map("click_id")
+  adExtId     String?  @map("ad_ext_id")
+  consultDone Boolean? @map("consult_done")
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sales   ClientSale[]
+
+  @@index([projectId])
+  @@map("clients")
+}
+
+model ClientSale {
+  id       String   @id @default(cuid())
+  clientId String   @map("client_id")
+  product  String
+  amount   Decimal  @db.Decimal(14, 2)
+  currency String   @default("UAH")
+  soldAt   DateTime @default(now()) @map("sold_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("client_sales")
+}
+
+// Запобіжник 18: журнал кожної дії (людина, правило, ШІ) з цифрами до і після.
+model ActionLog {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  actor     String // user:<id> | rule:<name> | ai | flows
+  kind      String
+  target    String?
+  before    Json?
+  after     Json?
+  reason    String?  @db.Text
+  status    String   @default("done") // done | dry_run | blocked | failed
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("action_log")
+}
+
+model SyncRun {
+  id           String    @id @default(cuid())
+  projectId    String    @map("project_id")
+  connectionId String?   @map("connection_id")
+  kind         String // meta_structure | meta_insights | site_events
+  status       String    @default("running") // running | ok | error
+  startedAt    DateTime  @default(now()) @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  stats        Json      @default("{}")
+  error        String?   @db.Text
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, startedAt])
+  @@map("sync_runs")
+}
