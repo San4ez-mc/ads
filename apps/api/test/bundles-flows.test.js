@@ -120,3 +120,33 @@ test('зв\'язка збирає оголошення за кодом у наз
   // Ключ проєкту (воронка) зв'язки лише читає.
   assert.strictEqual((await call('PATCH', `/api/bundles/${b.id}`, { status: 'works' })).status, 403);
 });
+
+test('рекомендації: що вимкнути, що підсилити, що почекати; звіт для Telegram', async () => {
+  const { buildAdvice, dailyReportText } = require('../src/lib/advice');
+  const ad = (o) => ({ externalId: o.id, name: o.id, running: true, spend: 0, sales: 0, saleCost: null, linkClicks: 10, impressions: 500, verdict: 'few', entry: null, createdAt: '2026-01-01', ...o });
+  const map = { target: 1500, elements: [], campaigns: [{ name: 'К', adSets: [{ name: 'Г', dailyBudget: 10, learningStage: 'SUCCESS', ads: [
+    ad({ id: 'bad0', spend: 3200, verdict: 'bad' }), ad({ id: 'good2', spend: 2000, sales: 2, saleCost: 1000, verdict: 'good' }), ad({ id: 'good1', spend: 1000, sales: 1, saleCost: 1000, verdict: 'good' }),
+    ad({ id: 'pricey', spend: 4000, sales: 2, saleCost: 2000, verdict: 'pricey' }), ad({ id: 'dead', impressions: 3000, linkClicks: 0, spend: 300 }),
+  ] }] }] };
+  const items = buildAdvice(map, { overview: { todaySpend: 900, limit: 400 }, connections: [{ name: 'Meta', status: 'error', lastError: 'ключ прострочено' }] });
+  const kinds = (id) => items.filter((i) => i.ad === id).map((i) => i.kind);
+  assert.deepStrictEqual(kinds('bad0'), ['pause']);
+  assert.deepStrictEqual(kinds('good2'), ['scale']);
+  assert.deepStrictEqual(kinds('good1'), ['watch']);
+  assert.ok(items.find((i) => i.ad === 'good1').preliminary, 'один продаж — лише попередньо');
+  assert.deepStrictEqual(kinds('pricey'), ['watch']);
+  assert.deepStrictEqual(kinds('dead'), ['no_clicks']);
+  assert.ok(items.some((i) => i.kind === 'limit' && i.severity === 'high'));
+  assert.ok(items.some((i) => i.kind === 'connection'));
+  assert.ok(['high', 'high'].includes(items[0].severity), 'найважливіше першим');
+  assert.ok(!items.some((i) => i.kind === 'scale' && i.ad === 'good1'), 'з одного продажу не масштабуємо');
+  // Без цілі — просимо її задати і нічого не вирішуємо.
+  const none = buildAdvice({ ...map, target: null }, { overview: null, connections: [] });
+  assert.ok(none.some((i) => i.kind === 'setup') && !none.some((i) => i.kind === 'pause'));
+  const text = dailyReportText({ name: 'FINEKO <тест>' }, '2026-11-16', { spend: 5000, linkClicks: 80, sales: 2, revenue: 3000, saleCost: 2500, target: 1500, todaySpend: 100, todayLimit: 420 }, items, []);
+  assert.ok(text.includes('FINEKO &lt;тест&gt;') && text.includes('Що робити') && text.includes('Вимкнути'), 'HTML екранований, поради є');
+  // Ендпоінт звіту через ключ проєкту (так його викликає воронка Flows).
+  const r = await call('GET', '/api/report/daily');
+  assert.strictEqual(r.status, 200);
+  assert.ok(typeof r.json.data.text === 'string' && r.json.data.text.includes('Самоперевірка 2'));
+});

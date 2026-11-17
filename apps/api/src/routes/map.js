@@ -13,13 +13,12 @@ const { inBundle } = require('./bundles');
 const router = express.Router();
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return null; } };
 
-router.get('/map', asyncHandler(async (req, res) => {
-  const p = period(req.query);
-  const project = req.project;
+/** Дані карти як функція: їх же читають рекомендації й звіти. */
+async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
   const target = project.targetSaleCost === null ? null : Number(project.targetSaleCost);
-  const bundle = req.query.bundle ? await db.bundle.findFirst({ where: { id: String(req.query.bundle), projectId: project.id } }) : null;
+  const bundle = bundleId ? await db.bundle.findFirst({ where: { id: String(bundleId), projectId: project.id } }) : null;
   const [allRows, allElements, counts] = await Promise.all([
-    adRows(project, p, { onlyActive: req.query.all !== '1' }),
+    adRows(project, p, { onlyActive: !all }),
     db.element.findMany({ where: { projectId: project.id }, include: { steps: true }, orderBy: { createdAt: 'asc' } }),
     // Унікальні люди на кроці в розрізі оголошення; без person_key — рахуємо подію як окрему людину.
     db.$queryRaw(Prisma.sql`
@@ -76,7 +75,12 @@ router.get('/map', asyncHandler(async (req, res) => {
   }
   const campaigns = [...camps.values()].map((c) => ({ id: c.id, name: c.name, spend: round2(c.spend), sales: c.sales, revenue: round2(c.revenue), saleCost: c.sales ? round2(c.spend / c.sales) : null, verdict: verdict({ spend: c.spend, sales: c.sales, target }), adSets: [...c.adSets.values()] })).sort((a, b) => b.spend - a.spend);
 
-  res.json({ ok: true, data: { from: p.from, to: p.to, currency: 'UAH', target, bundle: bundle ? { id: bundle.id, name: bundle.name, code: bundle.code } : null, campaigns, elements: els } });
+  return { from: p.from, to: p.to, currency: 'UAH', target, bundle: bundle ? { id: bundle.id, name: bundle.name, code: bundle.code } : null, campaigns, elements: els };
+}
+
+router.get('/map', asyncHandler(async (req, res) => {
+  res.json({ ok: true, data: await buildMapData(req.project, period(req.query), { all: req.query.all === '1', bundleId: req.query.bundle || null }) });
 }));
 
 module.exports = router;
+module.exports.buildMapData = buildMapData;

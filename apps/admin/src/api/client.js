@@ -45,6 +45,7 @@ export const api = {
   overview: (p) => get(`/overview${qs(p)}`),
   ads: (p) => get(`/ads${qs(p)}`),
   map: (p) => get(`/map${qs(p)}`),
+  advice: () => get('/advice'),
   bundles: () => get('/bundles'),
   createBundle: (d) => post('/bundles', d),
   patchBundle: (id, d) => patch(`/bundles/${id}`, d),

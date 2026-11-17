@@ -15,7 +15,7 @@ const PAGES = [
 const RULES = [
   [(m, p) => /^\/connections(\/|$)/.test(p), ['connections']],
   [(m, p) => m !== 'GET' && /^\/project(\/|$)/.test(p), ['settings']],
-  [(m, p) => /^\/(ads|overview|map)(\/|$)/.test(p), ['ads', 'map']],
+  [(m, p) => /^\/(ads|overview|map|advice|report)(\/|$)/.test(p), ['ads', 'map']],
   [(m, p) => /^\/sync(\/|$)/.test(p), ['ads', 'connections']],
   [(m, p) => /^\/journal(\/|$)/.test(p), ['journal']],
   [(m, p) => m !== 'GET' && /^\/(bundles|audiences|elements)(\/|$)/.test(p), ['bundles']],
@@ -37,7 +37,7 @@ function isAllowed(access, method, path) {
 
 // Що дозволено ключу проєкту (воронкам): читати зведення й оголошення, запускати синхронізацію. Ключі й налаштування — ні.
 const KEY_ALLOWED = [
-  ['GET', /^\/(ads|overview|map|bundles|sync\/runs|project)(\/|$)/],
+  ['GET', /^\/(ads|overview|map|bundles|advice|report|sync\/runs|project)(\/|$)/],
   ['POST', /^\/sync\/run$/],
 ];
 const keyAllowed = (method, path) => KEY_ALLOWED.some(([m, re]) => m === String(method).toUpperCase() && re.test(String(path)));
