@@ -46,6 +46,7 @@ export const api = {
   ads: (p) => get(`/ads${qs(p)}`),
   map: (p) => get(`/map${qs(p)}`),
   advice: () => get('/advice'),
+  adviceHistory: () => get('/advice/history'),
   checkAction: (d) => post('/actions/check', d),
   runAction: (d) => post('/actions', { ...d, confirm: true }),
   creatives: () => get('/creatives'),

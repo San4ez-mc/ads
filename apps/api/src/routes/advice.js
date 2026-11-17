@@ -5,6 +5,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { period } = require('./ads');
 const { buildMapData } = require('./map');
 const { inBundle } = require('./bundles');
+const history = require('../services/adviceHistory');
 const { buildAdvice, dailyReportText } = require('../lib/advice');
 const { toUah, round2 } = require('../lib/money');
 
@@ -21,8 +22,15 @@ async function gather(project, q) {
   const todaySpend = round2(todayRows.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, project), 0));
   const limit = round2(Number(project.dailyLimitUsd) * Number(project.usdRate));
   const advice = buildAdvice(map, { project, overview: { todaySpend, limit }, connections });
+  // Запам'ятовуємо нові поради й дописуємо підсумок до тих, яким минув тиждень. Помилка історії не має ламати саму пораду.
+  await history.record(project, advice, map).catch(() => {});
+  await history.evaluate(project).catch(() => {});
   return { p, map, advice, todaySpend, limit };
 }
+
+router.get('/advice/history', asyncHandler(async (req, res) => {
+  res.json({ ok: true, data: { items: await history.list(req.project) } });
+}));
 
 router.get('/advice', asyncHandler(async (req, res) => {
   const { p, advice } = await gather(req.project, req.query);

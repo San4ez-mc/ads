@@ -59,7 +59,8 @@ function ActionButton({ action, onDone }) {
 export default function AdvicePage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const load = () => api.advice().then(setData).catch((e) => setError(e.message));
+  const [hist, setHist] = useState([]);
+  const load = () => api.advice().then(setData).then(() => api.adviceHistory()).then((h) => setHist(h.items)).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
   if (error) return <div className="card p-6 text-red-300 text-sm">{error}</div>;
   if (!data) return <div className="text-slate-500 text-sm">Завантаження…</div>;
@@ -86,6 +87,21 @@ export default function AdvicePage() {
           </article>
         );
       })}
+      {hist.length > 0 && (
+        <section className="pt-4">
+          <h2 className="text-base font-medium">Що було з порадами</h2>
+          <p className="text-sm text-slate-400 mb-3">Через 7 днів платформа дописує, що сталося після поради. Так видно, чи їй можна довіряти.</p>
+          <div className="space-y-2">
+            {hist.map((h) => (
+              <article key={h.id} className="card p-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500"><span>{new Date(h.createdAt).toLocaleDateString('uk-UA')}</span>{h.preliminary && <span>попередньо</span>}</div>
+                <div className="text-sm mt-1">{h.title}</div>
+                <div className="text-sm text-slate-400 mt-1">{h.outcome ? h.outcome.text : 'Підсумок буде за 7 днів після поради.'}</div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

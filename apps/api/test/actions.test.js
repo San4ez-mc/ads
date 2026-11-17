@@ -164,3 +164,18 @@ test('маршрут: без confirm нічого не виконується; �
   assert.ok(!isAllowed({ role: 'user', pageIds: ['ads'] }, 'POST', '/actions'), 'потрібне право «approve»');
   assert.ok(isAllowed({ role: 'user', pageIds: ['approve'] }, 'POST', '/actions'));
 });
+
+test('історія порад: записується один раз, через 7 днів дописується підсумок', async () => {
+  const history = require('../src/services/adviceHistory');
+  await db.actionLog.deleteMany({ where: { projectId: project.id } });
+  const map = { campaigns: [{ adSets: [{ ads: [{ externalId: '920002', name: 'Оголошення 2', spend: 900, sales: 0, saleCost: null, effectiveStatus: 'ACTIVE', running: true }] }] }] };
+  const items = [{ kind: 'pause', ad: '920002', title: 'Вимкнути «Оголошення 2»', preliminary: false }, { kind: 'limit', title: 'Ліміт' }];
+  assert.strictEqual(await history.record(project, items, map), 1, 'тільки пораду по оголошенню');
+  assert.strictEqual(await history.record(project, items, map), 0, 'ту саму пораду двічі не пишемо');
+  assert.strictEqual(await history.evaluate(project), 0, 'до тижня підсумку нема');
+  await db.adviceLog.updateMany({ where: { projectId: project.id }, data: { createdAt: new Date(Date.now() - 8 * 86400000) } });
+  assert.strictEqual(await history.evaluate(project), 1);
+  const [h] = await history.list(project);
+  assert.ok(h.outcome && h.outcome.text.includes('Не вимкнули'), 'оголошення лишилось активним — так і написано');
+  assert.strictEqual(h.outcome.followed, false);
+});

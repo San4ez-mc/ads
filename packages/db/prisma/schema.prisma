@@ -44,6 +44,7 @@ model Project {
   clients     Client[]
   actions     ActionLog[]
   syncRuns    SyncRun[]
+  adviceLogs  AdviceLog[]
 
   @@map("projects")
 }
@@ -405,4 +406,27 @@ model SyncRun {
 
   @@index([projectId, startedAt])
   @@map("sync_runs")
+}
+
+// Історія порад: що радила платформа і що сталось через тиждень (розділ 4.3 проєкту).
+model AdviceLog {
+  id          String    @id @default(cuid())
+  projectId   String    @map("project_id")
+  key         String // kind:номер оголошення
+  kind        String
+  adExtId     String    @map("ad_ext_id")
+  adName      String?   @map("ad_name")
+  title       String
+  preliminary Boolean   @default(false)
+  /// Цифри оголошення на момент поради: витрати, продажі, ціна продажу, стан.
+  snapshot    Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  evaluatedAt DateTime? @map("evaluated_at")
+  outcome     Json?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([projectId, key])
+  @@map("advice_log")
 }
