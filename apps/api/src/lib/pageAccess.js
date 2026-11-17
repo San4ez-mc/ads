@@ -21,6 +21,7 @@ const RULES = [
   [(m, p) => m !== 'GET' && /^\/(bundles|audiences|elements)(\/|$)/.test(p), ['bundles']],
   [(m, p) => /^\/creatives(\/|$)/.test(p), ['creatives']],
   [(m, p) => /^\/actions(\/|$)/.test(p), ['approve']],
+  [(m, p) => /^\/clients(\/|$)/.test(p), ['clients']],
 ];
 
 function requiredPages(method, path) {

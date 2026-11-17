@@ -349,6 +349,11 @@ model Client {
   clickId     String?  @map("click_id")
   adExtId     String?  @map("ad_ext_id")
   consultDone Boolean? @map("consult_done")
+  consultAt   DateTime? @map("consult_at")
+  /// Людина з подій сайту/бота/календаря, яку власник позначив клієнтом (без імен: лише ключ події).
+  personKey   String?  @map("person_key")
+  /// Етап шляху Instagram-повідомлень: wrote | answered | offer | paid.
+  stage       String?
   note        String?  @db.Text
   createdAt   DateTime @default(now()) @map("created_at")
 

@@ -42,6 +42,17 @@ const GUIDES = {
     idLabel: 'Адреса входу контент-платформи', idPlaceholder: 'https://content2.fineko.space/api/webhooks/ads-sync', keyLabel: 'Ключ (ADS_SYNC_KEY)',
     note: 'Ключ дає лише ці дії: персони, креативи реклами, замовлення, запис підсумків. Нічого не видаляє.',
   },
+  calendar: {
+    title: 'Календар (записи на консультацію)',
+    intro: 'Платформа бачить, скільки людей записалось на консультацію, і з якого оголошення. Імена й телефони з календаря не забираються.',
+    steps: [
+      ['Знайдіть ключ календаря', 'Відкрийте calendar.fineko.space → «Налаштування» → ключ API вашої компанії.'],
+      ['Додайте джерело у посилання на запис', 'На публічну сторінку запису додавайте параметр джерела з кодом заходу: …/book/matsuk?s=c<код заходу>. Тоді запис звʼяжеться з оголошенням.'],
+      ['Вставте адресу і ключ нижче', 'Адреса: https://calendar.fineko.space/api'],
+    ],
+    idLabel: 'Адреса АПІ календаря', idPlaceholder: 'https://calendar.fineko.space/api', keyLabel: 'Ключ API календаря',
+    note: 'Записи без коду заходу (наприклад, зроблені в боті) рахуються як записи, але без оголошення.',
+  },
   site: {
     title: 'Сайти (кроки людей на лендінгах)',
     intro: 'Платформа забирає з ваших сайтів події: зайшов, натиснув, заповнив форму, оплатив — разом із номером оголошення.',
@@ -59,6 +70,7 @@ function CheckResult({ channel, r }) {
   if (!r) return null;
   if (!r.ok) return <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-200">Не вдалося: {r.message}<div className="text-xs text-red-300/80 mt-1">Перевірте, що ключ скопійовано повністю і що користувачу призначено саме цей кабінет.</div></div>;
   const i = r.info;
+  if (channel === 'calendar') return <div className="rounded-lg border border-emerald-800 bg-emerald-900/20 p-3 text-sm text-emerald-100">Працює. Календар «{i.name}», записів у період: {i.bookingsFound}.</div>;
   if (channel === 'content2') return <div className="rounded-lg border border-emerald-800 bg-emerald-900/20 p-3 text-sm text-emerald-100">Працює. Проєкт «{i.project}»: персон {i.personas}, рекламних креативів {i.creatives}.</div>;
   if (channel === 'flows') return <div className={clsx('rounded-lg border p-3 text-sm', i.missing.length ? 'border-amber-700 bg-amber-900/20 text-amber-100' : 'border-emerald-800 bg-emerald-900/20 text-emerald-100')}>Працює. Знайдено воронок: {i.funnels.length}{i.funnels.length ? ` (${i.funnels.map((x) => `${x.name}: ${x.stages} етапів`).join('; ')})` : ''}.{i.missing.length ? ` Не знайдено: ${i.missing.join(', ')} — перевірте назву.` : ''}</div>;
   if (channel === 'site') return <div className="rounded-lg border border-emerald-800 bg-emerald-900/20 p-3 text-sm text-emerald-100">Працює. Сайтів знайдено: {i.sites.length}{i.sites.length ? ` (${i.sites.map((s) => s.name || s.domain).join(', ')})` : ''}.</div>;
@@ -122,7 +134,7 @@ function Wizard({ channel, onDone, onCancel }) {
         </div>
         <div>
           <label className="lbl" htmlFor="c-name">Назва для себе (необов'язково)</label>
-          <input id="c-name" className="inp" value={f.name} onChange={set('name')} placeholder={channel === 'meta' ? 'Основний кабінет' : channel === 'flows' ? 'Боти' : channel === 'content2' ? 'Контент-платформа' : 'Лендінги'} />
+          <input id="c-name" className="inp" value={f.name} onChange={set('name')} placeholder={channel === 'meta' ? 'Основний кабінет' : channel === 'flows' ? 'Боти' : channel === 'content2' ? 'Контент-платформа' : channel === 'calendar' ? 'Календар' : 'Лендінги'} />
         </div>
         {channel === 'content2' && (
           <div className="md:col-span-2">
@@ -189,6 +201,7 @@ export default function ConnectionsPage() {
           <button className="btn-ghost" onClick={() => setWizard('site')}>Додати сайти</button>
           <button className="btn-ghost" onClick={() => setWizard('flows')}>Додати боти Flows</button>
           <button className="btn-ghost" onClick={() => setWizard('content2')}>Додати контент-платформу</button>
+          <button className="btn-ghost" onClick={() => setWizard('calendar')}>Додати календар</button>
         </div>
       </div>
       {error && <div className="text-sm text-red-300">{error}</div>}

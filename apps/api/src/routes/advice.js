@@ -53,7 +53,9 @@ router.get('/report/daily', asyncHandler(async (req, res) => {
     const budget = b.testBudgetUsd === null ? null : Number(b.testBudgetUsd);
     return { name: b.name, code: b.code, status: b.status, metrics: { spend: bs, sales: bn, budgetUsedPct: budget ? Math.round((bs / rate / budget) * 100) : null } };
   });
-  const totals = { spend, linkClicks, sales, revenue, saleCost: sales ? round2(spend / sales) : null, target: map.target, todaySpend, todayLimit: limit };
+  const upsellCount = camps.reduce((s, c) => s + c.adSets.reduce((b, st) => b + st.ads.reduce((q, a) => q + (a.upsellCount || 0), 0), 0), 0);
+  const upsellRevenue = camps.reduce((s, c) => s + c.adSets.reduce((b, st) => b + st.ads.reduce((q, a) => q + (a.upsellRevenue || 0), 0), 0), 0);
+  const totals = { spend, linkClicks, sales, revenue, upsellCount, upsellRevenue, saleCost: sales ? round2(spend / sales) : null, target: map.target, todaySpend, todayLimit: limit };
   const label = start === end ? end : `${start} — ${end}`;
   res.json({ ok: true, data: { empty: camps.length === 0, text: dailyReportText(req.project, label, totals, advice, bundles), adviceCount: advice.filter((i) => i.severity !== 'info').length, chatId: req.project.reportChatId || null } });
 }));

@@ -9,6 +9,7 @@ import AdsPage from './pages/AdsPage';
 import BundlesPage from './pages/BundlesPage';
 import AdvicePage from './pages/AdvicePage';
 import CreativesPage from './pages/CreativesPage';
+import ClientsPage from './pages/ClientsPage';
 import ConnectionsPage from './pages/ConnectionsPage';
 import JournalPage from './pages/JournalPage';
 import SettingsPage from './pages/SettingsPage';
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/" element={<MapPage />} />
             <Route path="/advice" element={<AdvicePage />} />
             <Route path="/creatives" element={<CreativesPage />} />
+            <Route path="/clients" element={<ClientsPage />} />
             <Route path="/bundles" element={<BundlesPage />} />
             <Route path="/ads" element={<AdsPage />} />
             <Route path="/connections" element={<ConnectionsPage />} />

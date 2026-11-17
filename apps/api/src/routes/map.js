@@ -70,7 +70,7 @@ async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
     const c = camps.get(a.campaign.id);
     if (!c.adSets.has(a.adSet.id)) c.adSets.set(a.adSet.id, { ...a.adSet, ads: [] });
     const v = verdict({ spend: a.spend, sales: a.sales, target });
-    c.adSets.get(a.adSet.id).ads.push({ id: a.id, externalId: a.externalId, name: a.name, effectiveStatus: a.effectiveStatus, running: a.running, creative: a.creative, spend: a.spend, impressions: a.impressions, linkClicks: a.linkClicks, cpc: a.cpc, ctr: a.ctr, sales: a.sales, revenue: a.revenue, saleCost: a.saleCost, verdict: v, verdictLabel: LABEL[v], entry: entryOf(a) });
+    c.adSets.get(a.adSet.id).ads.push({ id: a.id, externalId: a.externalId, name: a.name, effectiveStatus: a.effectiveStatus, running: a.running, creative: a.creative, spend: a.spend, impressions: a.impressions, linkClicks: a.linkClicks, cpc: a.cpc, ctr: a.ctr, sales: a.sales, revenue: a.revenue, upsellRevenue: a.upsellRevenue, upsellCount: a.upsellCount, saleCost: a.saleCost, verdict: v, verdictLabel: LABEL[v], entry: entryOf(a) });
     c.spend += a.spend; c.sales += a.sales; c.revenue += a.revenue;
   }
   const campaigns = [...camps.values()].map((c) => ({ id: c.id, name: c.name, spend: round2(c.spend), sales: c.sales, revenue: round2(c.revenue), saleCost: c.sales ? round2(c.spend / c.sales) : null, verdict: verdict({ spend: c.spend, sales: c.sales, target }), adSets: [...c.adSets.values()] })).sort((a, b) => b.spend - a.spend);

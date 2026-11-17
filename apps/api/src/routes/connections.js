@@ -7,11 +7,12 @@ const meta = require('../channels/meta');
 const site = require('../channels/site');
 const flows = require('../channels/flows');
 const content2 = require('../channels/content2');
+const calendarCh = require('../channels/calendar');
 const { encrypt, decrypt, mask, scrub } = require('../lib/secrets');
 const { logAction } = require('../services/journal');
 
 const router = express.Router();
-const CHANNELS = { meta: 'Meta (Facebook / Instagram)', site: 'Сайти (АПІ кроків)', flows: 'Flows (етапи ботів)', content2: 'Контент-платформа (креативи, аудиторії)' };
+const CHANNELS = { meta: 'Meta (Facebook / Instagram)', site: 'Сайти (АПІ кроків)', flows: 'Flows (етапи ботів)', content2: 'Контент-платформа (креативи, аудиторії)', calendar: 'Календар (записи на консультацію)' };
 const slugList = (v) => [...new Set((Array.isArray(v) ? v : String(v || '').split(/[s,]+/)).map((s) => String(s).trim()).filter((s) => /^[a-z0-9][a-z0-9_-]{0,80}$/i.test(s)))].slice(0, 50);
 
 const view = (c) => ({
@@ -26,17 +27,18 @@ function normalize(channel, externalId) {
     if (!/^\d{5,25}$/.test(id)) throw new ValidationError('Номер рекламного кабінету — лише цифри (можна з «act_» на початку)');
     return id;
   }
-  if (channel === 'site' || channel === 'flows' || channel === 'content2') {
+  if (channel === 'site' || channel === 'flows' || channel === 'content2' || channel === 'calendar') {
     let u; try { u = new URL(String(externalId || '').trim()); } catch { throw new ValidationError('Адреса АПІ сайтів має бути повною, наприклад https://leads.fineko.space/api/ads/v1'); }
     if (u.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(u.hostname)) throw new ValidationError('Адреса АПІ сайтів має починатись з https://');
     return u.toString().replace(/\/+$/, '');
   }
-  throw new ValidationError('Невідомий канал. Доступні: meta, site, flows, content2');
+  throw new ValidationError('Невідомий канал. Доступні: meta, site, flows, content2, calendar');
 }
 
 /** Живий виклик у канал. Нічого не зберігає. */
 async function probe(channel, externalId, readKey, slugs, c2project) {
   if (channel === 'content2') return content2.check(externalId, readKey, c2project);
+  if (channel === 'calendar') return calendarCh.check(externalId, readKey);
   if (channel === 'meta') return meta.check(readKey, externalId);
   if (channel === 'flows') return flows.check(externalId, readKey, slugs);
   return site.check(externalId, readKey);
@@ -72,7 +74,7 @@ router.post('/connections', asyncHandler(async (req, res) => {
   const externalId = normalize(b.channel, b.externalId);
   const readKey = String(b.readKey || '').trim();
   if (!readKey) throw new ValidationError('Ключ на читання обовʼязковий');
-  const name = String(b.name || '').trim().slice(0, 120) || (b.channel === 'meta' ? `Кабінет ${externalId}` : b.channel === 'flows' ? 'Боти Flows' : b.channel === 'content2' ? 'Контент-платформа' : 'Сайти');
+  const name = String(b.name || '').trim().slice(0, 120) || (b.channel === 'meta' ? `Кабінет ${externalId}` : b.channel === 'flows' ? 'Боти Flows' : b.channel === 'content2' ? 'Контент-платформа' : b.channel === 'calendar' ? 'Календар' : 'Сайти');
   const created = await db.connection.create({ data: { projectId: req.project.id, channel: b.channel, name, externalId, secretRead: encrypt(readKey), secretWrite: b.writeKey ? encrypt(String(b.writeKey).trim()) : null, config: b.channel === 'flows' ? { slugs: slugList(b.slugs) } : b.channel === 'content2' ? { projectId: String(b.c2project || '').trim().slice(0, 80) } : {} } });
   const conn = await runCheck(created);
   await logAction(req.project.id, req.actor, 'connection_added', { target: `${conn.channel}:${conn.externalId}`, after: { name, status: conn.status } });

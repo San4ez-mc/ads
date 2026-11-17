@@ -77,6 +77,7 @@ function dailyReportText(project, day, totals, advice, bundles) {
   lines.push(`<b>${escapeHtml(project.name)}</b> · ${escapeHtml(day)}`);
   lines.push(`Витрачено <b>${grn(totals.spend)}</b> · переходи ${totals.linkClicks} · продажі <b>${totals.sales}</b>${totals.sales ? ` на ${grn(totals.revenue)}` : ''}`);
   lines.push(totals.saleCost ? `Ціна продажу <b>${grn(totals.saleCost)}</b>${totals.target ? ` (ціль ${grn(totals.target)})` : ''}` : `Ціна продажу — ще нема продажів${totals.target ? ` (ціль ${grn(totals.target)})` : ''}`);
+  if (totals.upsellCount) lines.push(`Продажі далі (дорожчі продукти): ${totals.upsellCount} на ${grn(totals.upsellRevenue)}`);
   if (totals.todayLimit) lines.push(`Сьогодні: ${grn(totals.todaySpend)} з ліміту ${grn(totals.todayLimit)}`);
   const live = (bundles || []).filter((b) => ['test', 'works', 'scale'].includes(b.status));
   if (live.length) { lines.push(''); lines.push('<b>Зв\'язки в роботі</b>'); for (const b of live) lines.push(`• ${escapeHtml(b.name)}${b.code ? ` [${escapeHtml(b.code)}]` : ''}: ${grn(b.metrics.spend)}, продажів ${b.metrics.sales}${b.metrics.budgetUsedPct !== null ? `, бюджет тесту ${b.metrics.budgetUsedPct}%` : ''}`); }

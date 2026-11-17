@@ -97,13 +97,13 @@ router.get('/bundles', asyncHandler(async (req, res) => {
   const rate = Number(req.project.usdRate) || 42;
   const out = bundles.map((b) => {
     const ads = rows.filter((a) => inBundle(a.campaign.name, b.code));
-    const spend = ads.reduce((s, a) => s + a.spend, 0); const sales = ads.reduce((s, a) => s + a.sales, 0); const revenue = ads.reduce((s, a) => s + a.revenue, 0); const clicks = ads.reduce((s, a) => s + a.linkClicks, 0);
+    const spend = ads.reduce((s, a) => s + a.spend, 0); const sales = ads.reduce((s, a) => s + a.sales, 0); const revenue = ads.reduce((s, a) => s + a.revenue, 0); const upsell = ads.reduce((s, a) => s + (a.upsellRevenue || 0), 0); const upsellCount = ads.reduce((s, a) => s + (a.upsellCount || 0), 0); const clicks = ads.reduce((s, a) => s + a.linkClicks, 0);
     const budget = b.testBudgetUsd === null ? null : Number(b.testBudgetUsd);
     const v = verdict({ spend, sales, target });
     return {
       id: b.id, name: b.name, code: b.code, hypothesis: b.hypothesis, product: b.product, promise: b.promise, angle: b.angle, path: b.path, status: b.status,
       testBudgetUsd: budget, stopRule: b.stopRule, verdict: b.verdict, audience: b.audience, startedAt: b.startedAt, endedAt: b.endedAt,
-      metrics: { ads: ads.length, running: ads.filter((a) => a.running).length, spend: round2(spend), spendUsd: round2(spend / rate), linkClicks: clicks, sales, revenue: round2(revenue), saleCost: sales ? round2(spend / sales) : null, budgetUsedPct: budget ? Math.round((spend / rate / budget) * 100) : null, state: v, stateLabel: LABEL[v] },
+      metrics: { ads: ads.length, running: ads.filter((a) => a.running).length, spend: round2(spend), spendUsd: round2(spend / rate), linkClicks: clicks, sales, revenue: round2(revenue), upsellRevenue: round2(upsell), upsellCount, returnPerSale: sales ? round2((revenue + upsell) / sales) : null, saleCost: sales ? round2(spend / sales) : null, budgetUsedPct: budget ? Math.round((spend / rate / budget) * 100) : null, state: v, stateLabel: LABEL[v] },
     };
   });
   res.json({ ok: true, data: { bundles: out, statuses: STATUSES, target } });

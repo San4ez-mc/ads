@@ -42,7 +42,7 @@ function AdNode({ data }) {
             <div className="grid grid-cols-3 gap-x-2 text-[11px] text-slate-400 mt-auto">
               <div>Витрачено<div className="text-sm text-slate-100">{fmt.money(a.spend)}</div></div>
               <div>Переходи<div className="text-sm text-slate-100">{fmt.int(a.linkClicks)}{a.cpc ? <span className="text-[11px] text-slate-400"> · {Math.round(a.cpc)} грн</span> : null}</div></div>
-              <div>Продаж<div className="text-sm" style={{ color: COLOR[a.verdict] }}>{a.sales ? `${a.sales} · ${fmt.money(a.saleCost)}` : '0'}</div></div>
+              <div>Продаж<div className="text-sm" style={{ color: COLOR[a.verdict] }}>{a.sales ? `${a.sales} · ${fmt.money(a.saleCost)}` : '0'}</div>{a.upsellCount > 0 && <div className="text-[11px] text-violet-300">далі: {a.upsellCount} · {fmt.money(a.upsellRevenue)}</div>}</div>
             </div>
             <div className="text-[11px] text-slate-500">{STATUS[a.effectiveStatus] || a.effectiveStatus || '—'}</div>
           </div>

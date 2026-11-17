@@ -38,14 +38,15 @@ async function adRows(project, p, { onlyActive } = {}) {
   const sale = await saleSteps(project.id);
   const byExt = new Map();
   for (const s of steps) {
-    const cur = byExt.get(s.adExtId) || { steps: {}, sales: 0, revenue: 0 };
+    const cur = byExt.get(s.adExtId) || { steps: {}, sales: 0, revenue: 0, upsellRevenue: 0, upsellCount: 0 };
+    if (s.elementType === 'manual' && s.stepKey === 'upsell') { cur.upsellRevenue += Number(s._sum.amount || 0); cur.upsellCount += s._count._all; }
     cur.steps[s.stepKey] = (cur.steps[s.stepKey] || 0) + s._count._all;
     if (sale.has(s.elementType, s.elementRef, s.stepKey)) { cur.sales += s._count._all; cur.revenue += sale.amountOf(s.elementType, s.elementRef, s.stepKey, s._count._all, s._sum.amount); }
     byExt.set(s.adExtId, cur);
   }
   return ads.map((a) => {
     const m = byAd.get(a.id) || { spendUah: 0, impressions: 0, clicks: 0, linkClicks: 0 };
-    const f = byExt.get(a.externalId) || { steps: {}, sales: 0, revenue: 0 };
+    const f = byExt.get(a.externalId) || { steps: {}, sales: 0, revenue: 0, upsellRevenue: 0, upsellCount: 0 };
     return {
       id: a.id, externalId: a.externalId, name: a.name, channel: a.channel, status: a.status, effectiveStatus: a.effectiveStatus, running: running(a.effectiveStatus),
       campaign: a.campaign, adSet: { id: a.adSet.id, name: a.adSet.name, externalId: a.adSet.externalId, dailyBudget: a.adSet.dailyBudget === null ? null : Number(a.adSet.dailyBudget), learningStage: a.adSet.learningStage },
@@ -53,7 +54,7 @@ async function adRows(project, p, { onlyActive } = {}) {
       createdAt: a.extCreatedAt,
       spend: round2(m.spendUah), impressions: m.impressions, clicks: m.clicks, linkClicks: m.linkClicks,
       cpc: m.linkClicks ? round2(m.spendUah / m.linkClicks) : null, ctr: m.impressions ? round2((m.linkClicks / m.impressions) * 100) : null,
-      steps: f.steps, sales: f.sales, revenue: round2(f.revenue), saleCost: f.sales ? round2(m.spendUah / f.sales) : null,
+      steps: f.steps, sales: f.sales, revenue: round2(f.revenue), upsellRevenue: round2(f.upsellRevenue), upsellCount: f.upsellCount, saleCost: f.sales ? round2(m.spendUah / f.sales) : null,
     };
   }).filter((r) => !onlyActive || r.running || r.spend > 0);
 }
@@ -91,7 +92,7 @@ const inFlight = new Map();
 router.post('/sync/run', asyncHandler(async (req, res) => {
   const id = req.project.id;
   if (inFlight.has(id)) return void res.status(409).json({ ok: false, error: { code: 'CONFLICT', message: 'Синхронізація вже йде, зачекайте' } });
-  const kinds = Array.isArray(req.body?.kinds) && req.body.kinds.length ? req.body.kinds.filter((k) => ['structure', 'insights', 'site', 'flows'].includes(k)) : undefined;
+  const kinds = Array.isArray(req.body?.kinds) && req.body.kinds.length ? req.body.kinds.filter((k) => ['structure', 'insights', 'site', 'flows', 'calendar'].includes(k)) : undefined;
   const days = Number(req.body?.days) || 7;
   const job = runProjectSync(id, { kinds, days }).finally(() => inFlight.delete(id));
   inFlight.set(id, job);

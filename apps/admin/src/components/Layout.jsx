@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/authStore';
 const NAV = [
   { to: '/', label: 'Карта', page: 'map', end: true },
   { to: '/advice', label: 'Рекомендації', page: 'ads' },
+  { to: '/clients', label: 'Клієнти', page: 'clients' },
   { to: '/creatives', label: 'Креативи', page: 'creatives' },
   { to: '/bundles', label: "Зв'язки", page: 'bundles' },
   { to: '/ads', label: 'Оголошення', page: 'ads' },

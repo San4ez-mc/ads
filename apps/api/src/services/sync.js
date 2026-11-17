@@ -5,6 +5,7 @@ const logger = require('@ads/logger');
 const meta = require('../channels/meta');
 const site = require('../channels/site');
 const flows = require('../channels/flows');
+const calendar = require('../channels/calendar');
 const { decrypt, scrub } = require('../lib/secrets');
 
 const day = (s) => new Date(`${String(s).slice(0, 10)}T00:00:00.000Z`);
@@ -140,6 +141,28 @@ async function syncFlowsStages(conn) {
   });
 }
 
+/** Записи з календаря → крок «Записався на час». Скасовані записи подією не лишаються. */
+async function syncCalendar(conn) {
+  return withRun(conn.projectId, conn.id, 'calendar_bookings', async () => {
+    const key = decrypt(conn.secretRead);
+    const slug = String(conn.config?.slug || 'matsuk');
+    const el = await db.element.upsert({ where: { projectId_type_ref: { projectId: conn.projectId, type: 'calendar', ref: slug } }, update: {}, create: { projectId: conn.projectId, type: 'calendar', ref: slug, name: 'Запис у календар' } });
+    await db.step.upsert({ where: { elementId_key: { elementId: el.id, key: 'booking' } }, update: {}, create: { elementId: el.id, key: 'booking', title: 'Записався на час', order: 1 } });
+    const rows = await calendar.fetchBookings(conn.externalId, key);
+    let kept = 0; let dropped = 0;
+    for (const b of rows) {
+      const where = { projectId_elementType_elementRef_sourceId: { projectId: conn.projectId, elementType: 'calendar', elementRef: slug, sourceId: b.id } };
+      if (b.status === 'cancelled') { await db.stepEvent.deleteMany({ where: { projectId: conn.projectId, elementType: 'calendar', elementRef: slug, sourceId: b.id } }); dropped += 1; continue; }
+      const clickId = calendar.clickIdOf(b.source);
+      const base = { stepKey: 'booking', ts: new Date(b.createdAt), personKey: `cal:${b.id}`, isTest: false, utmSource: clickId ? 'meta' : null };
+      // Знайдене раніше оголошення повторним читанням не затираємо.
+      await db.stepEvent.upsert({ where, update: { ts: base.ts, ...(clickId ? { clickId } : {}) }, create: { ...base, clickId, projectId: conn.projectId, elementType: 'calendar', elementRef: slug, sourceId: b.id } });
+      kept += 1;
+    }
+    return { bookings: kept, cancelled: dropped };
+  });
+}
+
 /** Бот знає лише код заходу з лендінгу; оголошення за цим кодом знає сайт. Зводимо: подія з кодом, але без оголошення, отримує оголошення з таблиці заходів. */
 async function resolveClicks(projectId) {
   return db.$executeRaw`
@@ -150,7 +173,7 @@ async function resolveClicks(projectId) {
 }
 
 /** Повна синхронізація проєкту. Обмеження частоти в одному підключенні зупиняє лише його, не решту. */
-async function runProjectSync(projectId, { kinds = ['structure', 'insights', 'site', 'flows'], days = 7 } = {}) {
+async function runProjectSync(projectId, { kinds = ['structure', 'insights', 'site', 'flows', 'calendar'], days = 7 } = {}) {
   const conns = await db.connection.findMany({ where: { projectId, secretRead: { not: null } } });
   const results = [];
   for (const c of conns) {
@@ -161,10 +184,12 @@ async function runProjectSync(projectId, { kinds = ['structure', 'insights', 'si
       results.push(await syncSiteEvents(c));
     } else if (c.channel === 'flows' && kinds.includes('flows')) {
       results.push(await syncFlowsStages(c));
+    } else if (c.channel === 'calendar' && kinds.includes('calendar')) {
+      results.push(await syncCalendar(c));
     }
   }
   const resolved = await resolveClicks(projectId).catch((e) => { logger.warn(`[sync] resolveClicks: ${e.message}`); return 0; });
   return { connections: conns.length, results, resolvedClicks: Number(resolved) || 0, ok: results.every((r) => r.ok) };
 }
 
-module.exports = { runProjectSync, syncMetaStructure, syncMetaInsights, syncSiteEvents, syncFlowsStages, resolveClicks };
+module.exports = { runProjectSync, syncMetaStructure, syncMetaInsights, syncSiteEvents, syncFlowsStages, syncCalendar, resolveClicks };

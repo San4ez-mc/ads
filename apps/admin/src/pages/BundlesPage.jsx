@@ -139,7 +139,11 @@ export default function BundlesPage() {
                             <div>Продажі<div className="text-sm text-slate-100">{m.sales}</div></div>
                             <div>Ціна продажу<div className="text-sm" style={{ color: COLOR[m.state] }}>{m.saleCost ? fmt.money(m.saleCost) : m.stateLabel}</div></div>
                           </div>
-                        ) : <div className="text-[11px] text-slate-500 mt-2">Оголошень ще нема{b.code ? ` — назвіть кампанію з «[${b.code}]»` : ''}</div>}
+                        ) : null}
+                        {m.upsellCount > 0 ? (
+                          <div className="text-[11px] text-violet-300 mt-1">Продажі далі: {m.upsellCount} на {fmt.money(m.upsellRevenue)} · дохід на один продаж {fmt.money(m.returnPerSale)}</div>
+                        ) : null}
+                        {m.ads === 0 && <div className="text-[11px] text-slate-500 mt-2">Оголошень ще нема{b.code ? ` — назвіть кампанію з «[${b.code}]»` : ''}</div>}
                         {b.testBudgetUsd !== null && <div className="mt-2"><div className="h-1.5 rounded bg-slate-800 overflow-hidden"><div className={clsx('h-full', m.budgetUsedPct >= 100 ? 'bg-red-400' : 'bg-brand')} style={{ width: `${Math.min(100, m.budgetUsedPct || 0)}%` }} /></div><div className="text-[11px] text-slate-500 mt-1">бюджет тесту: {m.spendUsd} з {b.testBudgetUsd} дол.</div></div>}
                         {b.stopRule?.text && <div className="text-[11px] text-slate-500 mt-1">Стоп: {b.stopRule.text}</div>}
                         {b.verdict && <div className="text-[11px] text-slate-300 mt-2 border-t border-slate-800 pt-2">{b.verdict}</div>}
