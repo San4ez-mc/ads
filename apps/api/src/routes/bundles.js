@@ -8,6 +8,8 @@ const { adRows, period } = require('./ads');
 const { verdict, LABEL } = require('../lib/verdict');
 const { round2 } = require('../lib/money');
 const { logAction } = require('../services/journal');
+const c2 = require('../channels/content2');
+const { decrypt } = require('../lib/secrets');
 
 const router = express.Router();
 const STATUSES = ['draft', 'test', 'works', 'fails', 'scale'];
@@ -128,6 +130,18 @@ router.patch('/bundles/:id', asyncHandler(async (req, res) => {
   }
   const b = await db.bundle.update({ where: { id: cur.id }, data });
   if (data.status && data.status !== cur.status) await logAction(req.project.id, req.actor, 'bundle_status', { target: b.name, before: { status: cur.status }, after: { status: b.status } });
+  if (data.status && data.status !== cur.status && ['works', 'fails'].includes(data.status)) {
+    // Найкращі зусилля: якщо контент-платформа недоступна, закриття тесту не страждає.
+    try {
+      const conn = await db.connection.findFirst({ where: { projectId: req.project.id, channel: 'content2', secretRead: { not: null } } });
+      const pid = conn && (conn.config?.projectId || req.project.content2ProjectId);
+      if (conn && pid) {
+        const full = await db.bundle.findUnique({ where: { id: b.id }, include: { audience: true } });
+        const m = [full.audience && `Аудиторія: ${full.audience.name}`, full.product && `Продукт: ${full.product}`, full.angle && `Біль / кут: ${full.angle}`, full.promise && `Обіцянка: ${full.promise}`].filter(Boolean).join('. ');
+        await c2.learning(conn.externalId, decrypt(conn.secretRead), pid, full.name, `${data.status === 'works' ? 'ПРАЦЮЄ' : 'НЕ ПРАЦЮЄ'}. ${m}. Підсумок: ${full.verdict}`);
+      }
+    } catch (e) { await logAction(req.project.id, 'system', 'learning_not_saved', { target: b.name, reason: String(e.message).slice(0, 200), status: 'failed' }); }
+  }
   res.json({ ok: true, data: { id: b.id, status: b.status } });
 }));
 

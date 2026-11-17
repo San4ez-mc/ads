@@ -93,6 +93,13 @@ export default function BundlesPage() {
   const [els, setEls] = useState([]);
   const [edit, setEdit] = useState(null);
   const [error, setError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+  async function syncAud() {
+    setSyncing(true); setSyncMsg('');
+    try { const r = await api.syncAudiences(); setSyncMsg(`Готово: оновлено ${r.pulled}, повʼязано ${r.linked}, створено в контент-платформі ${r.pushed}`); await load(); }
+    catch (e) { setSyncMsg(e.message); } finally { setSyncing(false); }
+  }
 
   const load = () => Promise.all([api.bundles(), api.audiences(), api.elements()]).then(([b, a, e]) => { setData(b); setAuds(a.audiences); setEls(e.elements); }).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
@@ -107,7 +114,9 @@ export default function BundlesPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-medium">Зв'язки</h1>
         <p className="text-sm text-slate-400">Кому показуємо × що обіцяємо × яким шляхом ведемо. Одна зміна за раз.</p>
-        <button className="btn-primary ml-auto" onClick={() => setEdit('new')}>Нова зв'язка</button>
+        <span className="ml-auto text-xs text-slate-400 max-w-xs">{syncMsg}</span>
+        <button className="btn-ghost" onClick={syncAud} disabled={syncing}>{syncing ? 'Синхронізую…' : 'Аудиторії з контент-платформи'}</button>
+        <button className="btn-primary" onClick={() => setEdit('new')}>Нова зв'язка</button>
       </div>
       {data.bundles.length === 0 ? <div className="card p-8 text-center text-slate-400 text-sm">Зв'язок ще нема. Створіть першу: аудиторія, обіцянка, шлях і бюджет тесту.</div> : (
         <div className="grid gap-3 items-start" style={{ gridTemplateColumns: 'repeat(5, minmax(230px, 1fr))', overflowX: 'auto' }}>

@@ -31,6 +31,17 @@ const GUIDES = {
     idLabel: 'Адреса видачі етапів', idPlaceholder: 'https://flows.fineko.space/api/ads-feed', keyLabel: 'Ключ (ADS_FEED_KEY)',
     note: 'Імена й контакти людей із Flows не забираються — лише етапи і код джерела.',
   },
+  content2: {
+    title: 'Контент-платформа (креативи й аудиторії)',
+    intro: 'Тут зберігаються й створюються всі креативи, звідси беруться аудиторії (персони). Платформа реклами їх показує, замовляє нові і записує результати тестів.',
+    steps: [
+      ['Задайте ключ у контент-платформі', 'На сервері content2 у файлі .env має бути рядок ADS_SYNC_KEY з довгим випадковим значенням. Це робиться один раз при викладанні.'],
+      ['Знайдіть номер проєкту', 'У content2 відкрийте потрібний проєкт: номер проєкту видно в адресі або в розділі налаштувань проєкту.'],
+      ['Вставте адресу, ключ і номер проєкту нижче', 'Адреса: https://content2.fineko.space/api/webhooks/ads-sync'],
+    ],
+    idLabel: 'Адреса входу контент-платформи', idPlaceholder: 'https://content2.fineko.space/api/webhooks/ads-sync', keyLabel: 'Ключ (ADS_SYNC_KEY)',
+    note: 'Ключ дає лише ці дії: персони, креативи реклами, замовлення, запис підсумків. Нічого не видаляє.',
+  },
   site: {
     title: 'Сайти (кроки людей на лендінгах)',
     intro: 'Платформа забирає з ваших сайтів події: зайшов, натиснув, заповнив форму, оплатив — разом із номером оголошення.',
@@ -48,6 +59,7 @@ function CheckResult({ channel, r }) {
   if (!r) return null;
   if (!r.ok) return <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-200">Не вдалося: {r.message}<div className="text-xs text-red-300/80 mt-1">Перевірте, що ключ скопійовано повністю і що користувачу призначено саме цей кабінет.</div></div>;
   const i = r.info;
+  if (channel === 'content2') return <div className="rounded-lg border border-emerald-800 bg-emerald-900/20 p-3 text-sm text-emerald-100">Працює. Проєкт «{i.project}»: персон {i.personas}, рекламних креативів {i.creatives}.</div>;
   if (channel === 'flows') return <div className={clsx('rounded-lg border p-3 text-sm', i.missing.length ? 'border-amber-700 bg-amber-900/20 text-amber-100' : 'border-emerald-800 bg-emerald-900/20 text-emerald-100')}>Працює. Знайдено воронок: {i.funnels.length}{i.funnels.length ? ` (${i.funnels.map((x) => `${x.name}: ${x.stages} етапів`).join('; ')})` : ''}.{i.missing.length ? ` Не знайдено: ${i.missing.join(', ')} — перевірте назву.` : ''}</div>;
   if (channel === 'site') return <div className="rounded-lg border border-emerald-800 bg-emerald-900/20 p-3 text-sm text-emerald-100">Працює. Сайтів знайдено: {i.sites.length}{i.sites.length ? ` (${i.sites.map((s) => s.name || s.domain).join(', ')})` : ''}.</div>;
   return (
@@ -62,7 +74,7 @@ function CheckResult({ channel, r }) {
 
 function Wizard({ channel, onDone, onCancel }) {
   const g = GUIDES[channel];
-  const [f, setF] = useState({ name: '', externalId: '', readKey: '', slugs: '' });
+  const [f, setF] = useState({ name: '', externalId: '', readKey: '', slugs: '', c2project: '' });
   const [errs, setErrs] = useState({});
   const [test, setTest] = useState(null);
   const [busy, setBusy] = useState('');
@@ -74,12 +86,13 @@ function Wizard({ channel, onDone, onCancel }) {
     if (!f.externalId.trim()) e.externalId = channel === 'meta' ? 'Вставте номер кабінету' : 'Вставте адресу';
     if (!f.readKey.trim()) e.readKey = 'Вставте ключ';
     if (channel === 'flows' && !f.slugs.trim()) e.slugs = 'Вкажіть хоча б одну воронку';
+    if (channel === 'content2' && !f.c2project.trim()) e.c2project = 'Вкажіть номер проєкту';
     setErrs(e); return !Object.keys(e).length;
   }
   async function runTest() {
     if (!validate()) return;
     setBusy('test'); setError('');
-    try { setTest(await api.testConnection({ channel, externalId: f.externalId, readKey: f.readKey, slugs: f.slugs })); } catch (err) { setError(err.message); } finally { setBusy(''); }
+    try { setTest(await api.testConnection({ channel, externalId: f.externalId, readKey: f.readKey, slugs: f.slugs, c2project: f.c2project })); } catch (err) { setError(err.message); } finally { setBusy(''); }
   }
   async function save() {
     if (!validate()) return;
@@ -109,8 +122,15 @@ function Wizard({ channel, onDone, onCancel }) {
         </div>
         <div>
           <label className="lbl" htmlFor="c-name">Назва для себе (необов'язково)</label>
-          <input id="c-name" className="inp" value={f.name} onChange={set('name')} placeholder={channel === 'meta' ? 'Основний кабінет' : channel === 'flows' ? 'Боти' : 'Лендінги'} />
+          <input id="c-name" className="inp" value={f.name} onChange={set('name')} placeholder={channel === 'meta' ? 'Основний кабінет' : channel === 'flows' ? 'Боти' : channel === 'content2' ? 'Контент-платформа' : 'Лендінги'} />
         </div>
+        {channel === 'content2' && (
+          <div className="md:col-span-2">
+            <label className="lbl" htmlFor="c-c2">Номер проєкту в контент-платформі</label>
+            <input id="c-c2" className="inp font-mono" value={f.c2project} onChange={set('c2project')} placeholder="cmq8cyn660001knxri1ly2f3g" />
+            {errs.c2project && <p className="text-red-300 text-xs mt-1">{errs.c2project}</p>}
+          </div>
+        )}
         {channel === 'flows' && (
           <div className="md:col-span-2">
             <label className="lbl" htmlFor="c-slugs">Воронки (через кому)</label>
@@ -161,6 +181,7 @@ export default function ConnectionsPage() {
           <button className="btn-primary" onClick={() => setWizard('meta')}>Додати кабінет Meta</button>
           <button className="btn-ghost" onClick={() => setWizard('site')}>Додати сайти</button>
           <button className="btn-ghost" onClick={() => setWizard('flows')}>Додати боти Flows</button>
+          <button className="btn-ghost" onClick={() => setWizard('content2')}>Додати контент-платформу</button>
         </div>
       </div>
       {error && <div className="text-sm text-red-300">{error}</div>}

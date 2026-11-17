@@ -150,3 +150,58 @@ test('рекомендації: що вимкнути, що підсилити, 
   assert.strictEqual(r.status, 200);
   assert.ok(typeof r.json.data.text === 'string' && r.json.data.text.includes('Самоперевірка 2'));
 });
+
+test('контент-платформа: аудиторії ↔ персони, креативи, замовлення, підсумок тесту', async () => {
+  const calls = []; const personas = [{ id: 'p1', name: 'Власник бізнесу', pains: 'рутина', goals: 'вільний час', triggers: null, objections: 'дорого', language: null }];
+  const c2 = http.createServer((req, res) => {
+    let raw = ''; req.on('data', (d) => { raw += d; }).on('end', () => {
+      const send = (code, data) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+      if (req.headers.authorization !== 'Bearer c2-key') return send(401, { ok: false, error: { code: 'AUTH_ERROR', message: 'Невірний ключ' } });
+      const b = JSON.parse(raw || '{}'); calls.push(b);
+      if (b.action === 'ping') return send(200, { ok: true, data: { project: 'FINEKO — Контент', personas: 1, creatives: 1 } });
+      if (b.action === 'personas') return send(200, { ok: true, data: { personas } });
+      if (b.action === 'upsert_persona') { const id = `new-${calls.length}`; personas.push({ id, name: b.name, pains: b.pains }); return send(200, { ok: true, data: { id, created: true } }); }
+      if (b.action === 'creatives') return send(200, { ok: true, data: { creatives: [{ id: 'g1', number: 7, status: 'draft', hook: 'Рутина їсть години', text: 'текст', mediaUrl: 'https://x/y.jpg', mediaType: 'image' }] } });
+      if (b.action === 'order') return send(200, { ok: true, data: { sessionKey: 'ads-1', projectId: b.projectId } });
+      if (b.action === 'learning') return send(200, { ok: true, data: { id: 'k1', created: true } });
+      send(400, { ok: false, error: { code: 'VALIDATION_ERROR', message: 'no' } });
+    });
+  });
+  await new Promise((r) => c2.listen(0, '127.0.0.1', r));
+  const express = require('express');
+  const mini = express(); mini.use(express.json());
+  mini.use((req, res, next) => { req.project = project; req.actor = 'user:test'; req.access = { role: 'superadmin', pageIds: [] }; next(); });
+  mini.use('/api', require('../src/routes/creatives'), require('../src/routes/bundles'));
+  mini.use(require('../src/middleware/errorHandler'));
+  const ms = mini.listen(0, '127.0.0.1'); await new Promise((r) => ms.once('listening', r));
+  const call2 = (method, p, body) => fetch(`http://127.0.0.1:${ms.address().port}${p}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then(async (r) => ({ status: r.status, json: await r.json() }));
+  try {
+    const { encrypt } = require('../src/lib/secrets');
+    await db.connection.create({ data: { projectId: project.id, channel: 'content2', name: 'Контент', externalId: `http://127.0.0.1:${c2.address().port}`, secretRead: encrypt('c2-key'), config: { projectId: 'c2proj' } } });
+    await db.audience.create({ data: { projectId: project.id, name: 'Нова з реклами', description: 'опис' } });
+    const s = await call2('POST', '/api/audiences/sync');
+    assert.deepStrictEqual(s.json.data, { pulled: 1, linked: 0, pushed: 1 }, 'персона підтягнулась, нова аудиторія створила персону');
+    const auds = await db.audience.findMany({ where: { projectId: project.id } });
+    assert.ok(auds.every((a) => a.content2PersonaId), 'усі аудиторії повʼязані з персонами');
+    assert.ok(auds.find((a) => a.name === 'Власник бізнесу').description.includes('Болі: рутина'));
+    const again = await call2('POST', '/api/audiences/sync');
+    assert.deepStrictEqual(again.json.data, { pulled: 0, linked: 0, pushed: 0 }, 'повторна синхронізація нічого не міняє');
+    const list = await call2('GET', '/api/creatives');
+    assert.strictEqual(list.json.data.creatives[0].number, 7);
+    const b = await db.bundle.create({ data: { projectId: project.id, name: 'Тест звязка', code: 'Z9', product: 'Розбір, 1500 грн', promise: '1 зустріч', angle: 'рутина', status: 'test', audienceId: auds.find((a) => a.name === 'Власник бізнесу').id } });
+    const ord = await call2('POST', '/api/creatives/order', { bundleId: b.id, format: 'story', count: 2, wishes: ['замінити X'], note: 'без людей', dryRun: false });
+    assert.strictEqual(ord.status, 200, JSON.stringify(ord.json));
+    const sent = calls.filter((c) => c.action === 'order').pop();
+    assert.ok(['Тест звязка', '[Z9]', 'сторіз', 'замінити X', 'без людей', 'Болі: рутина', 'не став їх у чергу публікації'].every((t) => sent.text.includes(t)), 'у замовленні є звязка, аудиторія, формат, побажання');
+    assert.strictEqual((await call2('POST', '/api/creatives/order', {})).status, 400, 'порожнє замовлення не приймається');
+    const bad = await call2('PATCH', `/api/bundles/${b.id}`, { status: 'works' });
+    assert.strictEqual(bad.status, 400, 'без підсумку тест не закривається');
+    const ok = await call2('PATCH', `/api/bundles/${b.id}`, { status: 'works', verdict: 'Окупилось з першого тижня' });
+    assert.strictEqual(ok.status, 200);
+    const learn = calls.filter((c) => c.action === 'learning').pop();
+    assert.ok(learn && learn.title === 'Тест звязка' && learn.content.includes('ПРАЦЮЄ') && learn.content.includes('Окупилось'), 'підсумок поїхав у контент-платформу');
+    // Ключ проєкту (воронка) замовляти креативи не може.
+    assert.strictEqual((await call('POST', '/api/creatives/order', { note: 'x' })).status, 403);
+    assert.strictEqual((await call('GET', '/api/creatives')).status, 403);
+  } finally { await new Promise((r) => ms.close(r)); await new Promise((r) => c2.close(r)); }
+});

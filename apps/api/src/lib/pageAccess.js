@@ -19,6 +19,7 @@ const RULES = [
   [(m, p) => /^\/sync(\/|$)/.test(p), ['ads', 'connections']],
   [(m, p) => /^\/journal(\/|$)/.test(p), ['journal']],
   [(m, p) => m !== 'GET' && /^\/(bundles|audiences|elements)(\/|$)/.test(p), ['bundles']],
+  [(m, p) => /^\/creatives(\/|$)/.test(p), ['creatives']],
 ];
 
 function requiredPages(method, path) {
