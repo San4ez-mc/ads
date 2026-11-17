@@ -104,4 +104,23 @@ async function fetchInsights(token, accountId, since, until) {
   });
 }
 
-module.exports = { check, fetchStructure, fetchInsights, MetaError, VERSION };
+// ── ЗАПИС. Єдине місце, де платформа щось міняє в кабінеті. Викликати ЛИШЕ з services/actions.js після запобіжників. ──
+async function write(token, objectId, fields) {
+  if (!/^\d{5,25}$/.test(String(objectId))) throw new MetaError('Некоректний номер об\'єкта');
+  const body = new URLSearchParams(Object.entries(fields).map(([k, v]) => [k, String(v)]));
+  // Ключ — у заголовку, не в тілі й не в адресі.
+  const res = await fetch(`${BASE}/${objectId}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(45_000) }).catch((e) => { throw new MetaError(`Meta недоступна: ${e.message}`); });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json || json.error) {
+    const e = json?.error || {};
+    throw new MetaError(e.error_user_msg || e.message || `Meta HTTP ${res.status}`, { code: e.code, subcode: e.error_subcode, status: res.status, rateLimited: RATE_CODES.has(e.code) || res.status === 429 });
+  }
+  return json;
+}
+
+const readBack = (token, objectId) => call(token, String(objectId), { fields: 'status,effective_status,daily_budget' });
+const setStatus = (token, objectId, status) => write(token, objectId, { status });
+/** amount — у звичайних одиницях валюти кабінету; Meta чекає найменші одиниці (центи/копійки). */
+const setDailyBudget = (token, adSetId, amount) => write(token, adSetId, { daily_budget: Math.round(Number(amount) * 100) });
+
+module.exports = { check, fetchStructure, fetchInsights, setStatus, setDailyBudget, readBack, MetaError, VERSION };

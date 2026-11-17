@@ -10,6 +10,6 @@
     "build:admin": "npm run build -w @ads/admin",
     "db:generate": "npm run generate -w @ads/db",
     "db:push": "npm run push -w @ads/db",
-    "test": "node --test apps/api/test/sync.test.js apps/api/test/bundles-flows.test.js"
+    "test": "node --test apps/api/test/sync.test.js apps/api/test/bundles-flows.test.js apps/api/test/actions.test.js"
   }
 }

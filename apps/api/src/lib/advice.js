@@ -10,7 +10,7 @@ const grn = (n) => `${Math.round(n).toLocaleString('uk-UA')} грн`;
 function buildAdvice(map, ctx) {
   const items = []; const target = map.target;
   const add = (it) => items.push({ severity: 'mid', preliminary: false, ...it });
-  const ads = map.campaigns.flatMap((c) => c.adSets.flatMap((s) => s.ads.map((a) => ({ ...a, campaign: c.name, adSet: s.name, adSetBudget: s.dailyBudget, learning: s.learningStage === 'LEARNING' }))));
+  const ads = map.campaigns.flatMap((c) => c.adSets.flatMap((s) => s.ads.map((a) => ({ ...a, campaign: c.name, adSet: s.name, adSetId: s.id, adSetBudget: s.dailyBudget, learning: s.learningStage === 'LEARNING' }))));
 
   if (!target) add({ kind: 'setup', severity: 'high', title: 'Задайте цільову ціну продажу', text: 'Без неї не можна сказати, що працює, а що ні. Налаштування → «Цільова ціна продажу».' });
 
@@ -43,10 +43,10 @@ function buildAdvice(map, ctx) {
     const tenDays = a.createdAt && Date.now() - new Date(a.createdAt).getTime() < 3 * 86400000;
     const early = !target || a.spend < target; // витрачено менше однієї цільової ціни — висновки ненадійні
     if (a.running && target) {
-      if (a.verdict === 'bad' && a.sales === 0) add({ kind: 'pause', severity: 'high', ad: a.externalId, title: `Вимкнути ${name}`, text: `Витрачено ${grn(a.spend)} (понад дві цільові ціни ${grn(target * 2)}) і жодного продажу. Це не випадковість: креатив або шлях не працює.` });
-      else if (a.verdict === 'bad') add({ kind: 'pause', severity: 'high', ad: a.externalId, title: `Вимкнути або замінити ${name}`, text: `Ціна продажу ${grn(a.saleCost)} — більш ніж у 1,5 раза вища за ціль ${grn(target)}.` });
+      if (a.verdict === 'bad' && a.sales === 0) add({ kind: 'pause', severity: 'high', ad: a.externalId, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути в кабінеті' }, title: `Вимкнути ${name}`, text: `Витрачено ${grn(a.spend)} (понад дві цільові ціни ${grn(target * 2)}) і жодного продажу. Це не випадковість: креатив або шлях не працює.` });
+      else if (a.verdict === 'bad') add({ kind: 'pause', severity: 'high', ad: a.externalId, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути в кабінеті' }, title: `Вимкнути або замінити ${name}`, text: `Ціна продажу ${grn(a.saleCost)} — більш ніж у 1,5 раза вища за ціль ${grn(target)}.` });
       else if (a.verdict === 'pricey') add({ kind: 'watch', severity: 'mid', ad: a.externalId, title: `Дорого: ${name}`, text: `Ціна продажу ${grn(a.saleCost)} при цілі ${grn(target)}. Дайте ще 2–3 дні або замініть креатив на інший біль.`, preliminary: a.sales < 2 });
-      else if (a.verdict === 'good' && a.sales >= 2) add({ kind: 'scale', severity: 'mid', ad: a.externalId, title: `Підсилити ${name}`, text: `Ціна продажу ${grn(a.saleCost)} (ціль ${grn(target)}), продажів ${a.sales}. Можна підняти бюджет групи на 20%${a.adSetBudget ? ` (зараз ${a.adSetBudget} на день)` : ''}, не частіше ніж раз на 3 дні.`, preliminary: false });
+      else if (a.verdict === 'good' && a.sales >= 2) add({ kind: 'scale', severity: 'mid', ad: a.externalId, action: a.adSetBudget ? { kind: 'set_adset_budget', adSetId: a.adSetId, dailyBudget: round2(a.adSetBudget * 1.2), label: `Підняти бюджет групи до ${round2(a.adSetBudget * 1.2)}` } : null, title: `Підсилити ${name}`, text: `Ціна продажу ${grn(a.saleCost)} (ціль ${grn(target)}), продажів ${a.sales}. Можна підняти бюджет групи на 20%${a.adSetBudget ? ` (зараз ${a.adSetBudget} на день)` : ''}, не частіше ніж раз на 3 дні.`, preliminary: false });
       else if (a.verdict === 'good') add({ kind: 'watch', severity: 'low', ad: a.externalId, title: `Добре, але лише ${a.sales} продаж: ${name}`, text: `Ціна продажу ${grn(a.saleCost)}. Поки не міняйте нічого — потрібен ще хоча б один продаж, щоб довіряти цифрі.`, preliminary: true });
       if (a.learning && a.verdict !== 'bad') add({ kind: 'learning', severity: 'info', ad: a.externalId, title: `${name} ще навчається`, text: 'Група в навчанні — бюджет і креатив краще не чіпати, поки Meta не зібрала дані.', preliminary: true });
       if (!tenDays && a.impressions >= 1500 && a.linkClicks === 0) add({ kind: 'no_clicks', severity: 'mid', ad: a.externalId, title: `${name}: показів багато, переходів нуль`, text: 'Креатив не чіпляє. Замініть зображення або перший рядок тексту.' });

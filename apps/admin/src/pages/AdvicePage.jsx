@@ -6,17 +6,68 @@ import { api } from '../api/client';
 const SEV = { high: ['Важливо', 'bg-red-900/50 text-red-200'], mid: ['Варто зробити', 'bg-amber-900/40 text-amber-200'], low: ['Для інформації', 'bg-slate-800 text-slate-300'], info: ['Нотатка', 'bg-slate-800 text-slate-400'] };
 const KIND = { pause: 'Вимкнути', scale: 'Підсилити', watch: 'Почекати', funnel: 'Воронка', no_clicks: 'Креатив', no_source: 'Джерело', limit: 'Ліміт', connection: 'Підключення', setup: 'Налаштування', learning: 'Навчання', few_data: 'Мало даних' };
 
+// Кнопка дії: спершу перевірка запобіжників, потім явне підтвердження. Нічого не виконується одним кліком.
+function ActionButton({ action, onDone }) {
+  const [state, setState] = useState('idle'); // idle | checking | confirm | running | done
+  const [check, setCheck] = useState(null);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const payload = { kind: action.kind, adId: action.adId, adSetId: action.adSetId, dailyBudget: action.dailyBudget };
+
+  async function start() {
+    setState('checking'); setError(''); setResult(null);
+    try { setCheck(await api.checkAction(payload)); setState('confirm'); } catch (e) { setError(e.message); setState('idle'); }
+  }
+  async function run() {
+    setState('running'); setError('');
+    try { const r = await api.runAction(payload); setResult(r); setState('done'); onDone && onDone(r); } catch (e) { setError(e.message); setState('confirm'); }
+  }
+
+  if (state === 'done' && result) {
+    const tone = result.status === 'done' ? 'text-emerald-300' : result.status === 'dry_run' ? 'text-amber-200' : 'text-red-300';
+    return <div className={clsx('mt-3 text-sm', tone)}>{result.message || (result.reasons || []).join(' ')}</div>;
+  }
+  return (
+    <div className="mt-3">
+      {state === 'idle' && <button className="btn-ghost" onClick={start}>{action.label}</button>}
+      {state === 'checking' && <span className="text-sm text-slate-400">Перевіряю запобіжники…</span>}
+      {(state === 'confirm' || state === 'running') && check && (
+        <div className="rounded-lg border border-slate-700 p-3 space-y-2">
+          {check.ok ? (
+            <>
+              <div className="text-sm">Запобіжники пропускають дію.{check.dryRun ? ' Зараз режим «проба»: у кабінеті нічого не зміниться, дію лише запишуть у журнал.' : ' Зміна відбудеться в рекламному кабінеті одразу.'}</div>
+              {check.notes.map((n, i) => <div key={i} className="text-xs text-slate-400">{n}</div>)}
+              <div className="flex gap-2">
+                <button className="btn-primary" onClick={run} disabled={state === 'running'}>{state === 'running' ? 'Виконую…' : check.dryRun ? 'Записати як «зробив би»' : 'Підтвердити'}</button>
+                <button className="btn-ghost" onClick={() => setState('idle')} disabled={state === 'running'}>Скасувати</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm text-red-300">Запобіжники не дозволяють:</div>
+              <ul className="text-sm text-slate-300 list-disc pl-5 space-y-1">{check.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+              <button className="btn-ghost" onClick={() => setState('idle')}>Зрозуміло</button>
+            </>
+          )}
+        </div>
+      )}
+      {error && <div className="text-sm text-red-300 mt-2">{error}</div>}
+    </div>
+  );
+}
+
 export default function AdvicePage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  useEffect(() => { api.advice().then(setData).catch((e) => setError(e.message)); }, []);
+  const load = () => api.advice().then(setData).catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []);
   if (error) return <div className="card p-6 text-red-300 text-sm">{error}</div>;
   if (!data) return <div className="text-slate-500 text-sm">Завантаження…</div>;
   return (
     <div className="space-y-4 max-w-4xl">
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-lg font-medium">Рекомендації</h1>
-        <p className="text-sm text-slate-400">За {data.from} — {data.to}. Рахуються за простими правилами. Платформа лише радить, у кабінеті нічого не змінює.</p>
+        <p className="text-sm text-slate-400">За {data.from} — {data.to}. Рахуються за простими правилами. Зміна в кабінеті — лише після вашого підтвердження.</p>
       </div>
       {data.items.length === 0 ? (
         <div className="card p-8 text-center text-slate-400 text-sm">Порад немає: або всі оголошення в межах правил, або даних ще нема. <Link className="text-brand-light hover:underline" to="/connections">Підключення</Link></div>
@@ -31,6 +82,7 @@ export default function AdvicePage() {
             </div>
             <h2 className="text-sm font-medium mt-2">{i.title}</h2>
             <p className="text-sm text-slate-400 mt-1">{i.text}</p>
+            {i.action && <ActionButton action={i.action} onDone={() => setTimeout(load, 800)} />}
           </article>
         );
       })}

@@ -74,7 +74,7 @@ function CheckResult({ channel, r }) {
 
 function Wizard({ channel, onDone, onCancel }) {
   const g = GUIDES[channel];
-  const [f, setF] = useState({ name: '', externalId: '', readKey: '', slugs: '', c2project: '' });
+  const [f, setF] = useState({ name: '', externalId: '', readKey: '', slugs: '', c2project: '', writeKey: '' });
   const [errs, setErrs] = useState({});
   const [test, setTest] = useState(null);
   const [busy, setBusy] = useState('');
@@ -136,6 +136,13 @@ function Wizard({ channel, onDone, onCancel }) {
             <label className="lbl" htmlFor="c-slugs">Воронки (через кому)</label>
             <input id="c-slugs" className="inp" value={f.slugs} onChange={set('slugs')} placeholder="bot-karta-sales, sell-ai-seller" />
             {errs.slugs && <p className="text-red-300 text-xs mt-1">{errs.slugs}</p>}
+          </div>
+        )}
+        {channel === 'meta' && (
+          <div className="md:col-span-2">
+            <label className="lbl" htmlFor="c-wkey">Ключ керування (необов'язково, для кнопок «Вимкнути» й «Підняти бюджет»)</label>
+            <input id="c-wkey" type="password" className="inp font-mono" value={f.writeKey} onChange={set('writeKey')} placeholder="Залиште порожнім, поки платформа лише читає" autoComplete="new-password" />
+            <p className="text-xs text-slate-500 mt-1">Другий ключ того самого системного користувача з дозволом ads_management і правом керувати кабінетом. Додавайте, коли побачите, що поради платформи вам підходять. Дії все одно йдуть через запобіжники і ваше підтвердження.</p>
           </div>
         )}
         <div className="md:col-span-2">
