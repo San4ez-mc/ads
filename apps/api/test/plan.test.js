@@ -17,7 +17,7 @@ test.before(async () => {
       const send = (code, data) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
       if (req.headers.authorization !== 'Bearer c2-key') return send(401, { ok: false, error: { code: 'AUTH_ERROR', message: 'Невірний ключ' } });
       const b = JSON.parse(raw || '{}');
-      if (b.action === 'creatives') return send(200, { ok: true, data: { creatives: [{ id: 'g1', number: 5, status: 'draft', hook: 'Рутина їсть години', mediaUrl: 'https://x/a.jpg', mediaType: 'image' }] } });
+      if (b.action === 'creatives') return send(200, { ok: true, data: { creatives: [{ id: 'g1', number: 5, status: 'draft', hook: 'Рутина їсть години', topic: 'Розбір процесу · A1 · фото', mediaUrl: 'https://x/a.jpg', mediaType: 'image' }] } });
       send(400, { ok: false, error: { code: 'VALIDATION_ERROR', message: 'no' } });
     });
   });
@@ -72,6 +72,23 @@ test('зʼявилось оголошення зв\'язки (код у назв
   const steps = lane.path[0].element.steps;
   assert.deepStrictEqual([steps.find((s) => s.key === 'view').people, steps.find((s) => s.key === 'pay').people], [3, 1]);
   assert.deepStrictEqual([lane.metrics.hasAds, lane.metrics.spend, lane.metrics.sales, lane.metrics.saleCost, lane.metrics.state], [true, 400, 1, 400, 'good']);
+});
+
+test('карта креативів: групи за аудиторією й болем, відео без коду — за змістом, видно воронки', async () => {
+  const pains = require('../src/lib/pains');
+  assert.strictEqual(pains.painCode({ topic: 'Розбір процесу · A2 · фото' }), 'A2');
+  assert.strictEqual(pains.painCode({ text: 'Оплатили ChatGPT для команди, а нічого не змінилось?' }), 'D3');
+  assert.strictEqual(pains.painCode({ text: 'Усі вже впроваджують ШІ, а ви ще вручну відповідаєте' }), 'D1');
+  assert.strictEqual(pains.painCode({ text: 'Купили бота, а через 2 місяці ним ніхто не користується' }), 'D3');
+  assert.strictEqual(pains.painCode({ text: 'Роботу трьох менеджерів може виконувати один ШІ-помічник' }), 'A1');
+  assert.strictEqual(pains.painCode({ text: 'щось зовсім інше' }), null);
+  await db.audience.create({ data: { projectId: project.id, name: 'Дмитро', targeting: {} } });
+  const r = await fetch(`http://127.0.0.1:${srv.address().port}/api/map/creatives`).then((x) => x.json());
+  const g = r.data.groups;
+  assert.strictEqual(r.data.total, 1);
+  assert.strictEqual(g[0].audience.name, 'Дмитро');
+  assert.strictEqual(g[0].pain.code, 'A1');
+  assert.deepStrictEqual(g[0].creatives[0].bundles.map((b) => b.code), ['P1'], 'видно, у якій воронці стоїть креатив');
 });
 
 test('без підключеної контент-платформи план усе одно працює', async () => {

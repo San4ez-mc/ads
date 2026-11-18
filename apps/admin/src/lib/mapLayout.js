@@ -249,3 +249,35 @@ export function buildPlanMap(data) {
   }
   return { nodes, edges };
 }
+
+// Карта креативів: аудиторія (персона) → біль → креативи цього болю; на кожному креативі видно, у яких воронках він стоїть.
+export const CM = { audW: 300, audH: 150, painX: 380, painW: 340, painH: 170, crX: 800, crW: 210, crH: 360, crGap: 20, perRow: 6, rowGap: 50, blockGap: 80 };
+
+export function buildCreativeMap(data) {
+  const nodes = []; const edges = [];
+  const byAud = new Map();
+  for (const g of data.groups) { const k = g.audience ? g.audience.name : ''; if (!byAud.has(k)) byAud.set(k, []); byAud.get(k).push(g); }
+  let y = 0;
+  for (const [aud, groups] of byAud) {
+    const top = y; const audId = `aud:${aud || 'none'}`;
+    const painIds = [];
+    for (const g of groups) {
+      const pid = `pain:${aud}:${g.pain ? g.pain.code : 'none'}`;
+      const rows = Math.max(1, Math.ceil(g.creatives.length / CM.perRow));
+      const blockH = rows * CM.crH + (rows - 1) * CM.crGap;
+      nodes.push({ id: pid, type: 'pain', position: { x: CM.painX, y: y + (blockH - CM.painH) / 2 }, draggable: false, selectable: false, data: { pain: g.pain, count: g.creatives.length, inFunnels: g.creatives.filter((c) => c.bundles.length).length }, style: { width: CM.painW, height: CM.painH } });
+      painIds.push(pid);
+      g.creatives.forEach((c, i) => {
+        const id = `cr:${c.id}`;
+        nodes.push({ id, type: 'crCard', position: { x: CM.crX + (i % CM.perRow) * (CM.crW + CM.crGap), y: y + Math.floor(i / CM.perRow) * (CM.crH + CM.crGap) }, draggable: false, selectable: false, data: { c }, style: { width: CM.crW, height: CM.crH } });
+        if (i === 0) edges.push({ id: `e:${pid}>${id}`, source: pid, target: id, style: { stroke: '#64748b', strokeWidth: 1.5 } });
+      });
+      y += blockH + CM.rowGap;
+    }
+    const mid = (top + y - CM.rowGap) / 2;
+    nodes.push({ id: audId, type: 'audience', position: { x: 0, y: mid - CM.audH / 2 }, draggable: false, selectable: false, data: { name: aud, pains: groups.length, count: groups.reduce((n, g) => n + g.creatives.length, 0) }, style: { width: CM.audW, height: CM.audH } });
+    for (const pid of painIds) edges.push({ id: `e:${audId}>${pid}`, source: audId, target: pid, style: { stroke: '#8b5cf6', strokeWidth: 2 } });
+    y += CM.blockGap;
+  }
+  return { nodes, edges };
+}

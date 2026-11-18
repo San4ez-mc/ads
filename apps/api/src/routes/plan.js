@@ -10,6 +10,7 @@ const { link } = require('./creatives');
 const c2 = require('../channels/content2');
 const { verdict, LABEL } = require('../lib/verdict');
 const { round2 } = require('../lib/money');
+const { withPain } = require('../lib/pains');
 
 const router = express.Router();
 
@@ -55,6 +56,32 @@ router.get('/map/plan', asyncHandler(async (req, res) => {
     };
   });
   res.json({ ok: true, data: { from: p.from, to: p.to, target, metaConnected: meta > 0, contentConnected, contentError, lanes } });
+}));
+
+/** Карта креативів: усі креативи контент-платформи, згруповані за аудиторією (персоною) і болем, з позначкою, у яких воронках вони вже стоять. */
+router.get('/map/creatives', asyncHandler(async (req, res) => {
+  const project = req.project;
+  const l = await link(project);
+  const [creatives, bundles, audiences] = await Promise.all([
+    c2.creatives(l.url, l.key, l.pid, 200),
+    db.bundle.findMany({ where: { projectId: project.id }, orderBy: { createdAt: 'asc' } }),
+    db.audience.findMany({ where: { projectId: project.id } }),
+  ]);
+  const usage = new Map();
+  for (const b of bundles) for (const id of (Array.isArray(b.creativeIds) ? b.creativeIds : [])) usage.set(id, [...(usage.get(id) || []), { id: b.id, code: b.code, name: b.name }]);
+  const audByName = new Map(audiences.map((a) => [a.name.trim().toLowerCase(), a]));
+  const groups = new Map(); // «персона|код болю» → блок
+  for (const raw of creatives) {
+    const c = withPain(raw);
+    const pain = c.pain; const personaName = pain ? pain.persona : null;
+    const aud = personaName ? audByName.get(personaName.trim().toLowerCase()) : null;
+    const key = `${personaName || ''}|${pain ? pain.code : ''}`;
+    if (!groups.has(key)) groups.set(key, { audience: personaName ? { id: aud ? aud.id : null, name: personaName } : null, pain: pain ? { code: pain.code, title: pain.title } : null, creatives: [] });
+    groups.get(key).creatives.push({ id: c.id, number: c.number, status: c.status, mediaType: c.mediaType, mediaUrl: c.mediaUrl, hook: c.hook, topic: c.topic, text: (c.text || '').replace(/^Основний текст:\s*/i, '').slice(0, 140), bundles: usage.get(c.id) || [] });
+  }
+  const list = [...groups.values()].sort((a, b) => (a.audience ? 0 : 1) - (b.audience ? 0 : 1) || String(a.audience?.name).localeCompare(String(b.audience?.name), 'uk') || String(a.pain?.code).localeCompare(String(b.pain?.code)));
+  for (const g of list) g.creatives.sort((a, b) => b.number - a.number);
+  res.json({ ok: true, data: { groups: list, total: creatives.length, inFunnels: creatives.filter((c) => usage.has(c.id)).length } });
 }));
 
 module.exports = router;

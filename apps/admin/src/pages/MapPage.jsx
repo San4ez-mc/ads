@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, MiniMap, Handle, Position, useStore } 
 import '@xyflow/react/dist/style.css';
 import clsx from 'clsx';
 import { api, fmt } from '../api/client';
-import { buildMap, buildPlanMap, COLOR } from '../lib/mapLayout';
+import { buildMap, buildPlanMap, buildCreativeMap, COLOR } from '../lib/mapLayout';
 
 const PERIODS = [{ d: 1, label: 'Сьогодні' }, { d: 7, label: '7 днів' }, { d: 14, label: '14 днів' }, { d: 30, label: '30 днів' }];
 const range = (days) => { const to = new Date(); const from = new Date(to.getTime() - (days - 1) * 86400000); return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }; };
@@ -186,7 +186,48 @@ function NoteNode({ data }) {
   );
 }
 
-const nodeTypes = { ad: AdNode, campaign: CampaignNode, setLabel: SetLabel, element: ElementNode, step: StepNode, ghost: GhostNode, sale: SaleNode, lane: LaneNode, planned: PlannedNode, addCreative: AddCreativeNode, note: NoteNode };
+function AudienceNode({ data }) {
+  return (
+    <div className="h-full w-full rounded-2xl border border-brand/50 bg-brand/10 px-5 py-3 flex flex-col justify-center">
+      <Handle type="source" position={Position.Right} style={hidden} />
+      <div className="text-xs uppercase tracking-wide text-brand-light mb-1">Аудиторія</div>
+      <div className="text-2xl font-medium leading-tight">{data.name || 'Біль не визначено'}</div>
+      <div className="text-sm text-slate-400 mt-1">{data.pains} {data.pains === 1 ? 'біль' : 'болі'} · {data.count} креативів</div>
+    </div>
+  );
+}
+
+function PainNode({ data }) {
+  const p = data.pain;
+  return (
+    <div className="h-full w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-5 py-3 flex flex-col justify-center">
+      <Handle type="target" position={Position.Left} style={hidden} />
+      <Handle type="source" position={Position.Right} style={hidden} />
+      <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">Біль</div>
+      <div className="text-lg font-medium leading-snug">{p ? p.title : 'Біль у тексті не визначено'}</div>
+      <div className="text-sm text-slate-400 mt-1">{data.count} креативів · у воронках: {data.inFunnels}</div>
+    </div>
+  );
+}
+
+function CreativeCardNode({ data }) {
+  const c = data.c;
+  return (
+    <div className="h-full w-full rounded-xl overflow-hidden bg-slate-900 border border-slate-700 flex flex-col">
+      <Handle type="target" position={Position.Left} style={hidden} />
+      <div className="h-[240px] bg-slate-950 flex items-center justify-center shrink-0">
+        {c.mediaUrl && c.mediaType === 'image' ? <img src={c.mediaUrl} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false} className="max-h-full max-w-full object-contain" /> : <div className="px-4 text-center text-sm text-slate-400">{c.mediaType === 'video' ? 'Відео' : 'Зображення ще створюється'}</div>}
+      </div>
+      <div className="p-2 flex-1 min-h-0 overflow-hidden">
+        <div className="flex items-center gap-1.5"><span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">№{c.number}</span>{c.mediaType === 'video' && <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">відео</span>}</div>
+        <div className="text-xs text-slate-300 leading-snug mt-1 line-clamp-2">{c.hook || c.text}</div>
+        <div className="mt-1 flex flex-wrap gap-1">{c.bundles.length ? c.bundles.map((b) => <span key={b.id} className="text-[11px] px-1.5 py-0.5 rounded bg-brand/20 text-brand-light">{b.code ? `[${b.code}]` : b.name}</span>) : <span className="text-[11px] text-slate-500">ще не в воронці</span>}</div>
+      </div>
+    </div>
+  );
+}
+
+const nodeTypes = { audience: AudienceNode, pain: PainNode, crCard: CreativeCardNode, ad: AdNode, campaign: CampaignNode, setLabel: SetLabel, element: ElementNode, step: StepNode, ghost: GhostNode, sale: SaleNode, lane: LaneNode, planned: PlannedNode, addCreative: AddCreativeNode, note: NoteNode };
 
 function AdPanel({ ad, onClose }) {
   const rows = [['Витрачено', fmt.money(ad.spend)], ['Покази', fmt.int(ad.impressions)], ['Переходи', fmt.int(ad.linkClicks)], ['Ціна переходу', fmt.money2(ad.cpc)], ['Частка переходів', ad.ctr !== null ? `${ad.ctr}%` : '—'], ['Продажі', ad.sales], ['Виручка', fmt.money(ad.revenue)], ['Ціна продажу', fmt.money(ad.saleCost)]];
@@ -322,16 +363,41 @@ function PlanView() {
   );
 }
 
+// Карта креативів: усі креативи контент-платформи за аудиторіями й болями.
+function CreativesMapView() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => { api.creativeMap().then(setData).catch((e) => setError(e.message)); }, []);
+  const { nodes, edges } = useMemo(() => (data ? buildCreativeMap(data) : { nodes: [], edges: [] }), [data]);
+  if (error) return <div className="card p-6 text-sm text-slate-300">{error} <Link to="/connections" className="text-brand-light hover:underline ml-2">До підключень</Link></div>;
+  if (!data) return <div className="text-slate-500 text-sm">Завантаження…</div>;
+  const focus = nodes.filter((n) => n.position.y < 1000).map((n) => ({ id: n.id })); // на старті видно перші блоки повністю
+  return (
+    <div className="flex flex-col gap-3" style={{ height: 'calc(100vh - 150px)' }}>
+      <div className="text-sm text-slate-400">Усього креативів: {data.total} · уже в воронках: {data.inFunnels}. Зліва аудиторія, далі її біль, праворуч креативи цього болю. Додати креатив у воронку: «Зв'язки» → редагувати → «Креативи цієї зв'язки».</div>
+      {data.groups.length === 0 ? <div className="card p-8 text-center text-slate-400 text-sm">Креативів ще нема. Замовте перші на сторінці «Креативи».</div> : (
+        <div className="relative flex-1 rounded-xl overflow-hidden border border-slate-800">
+          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode="dark" fitView fitViewOptions={{ padding: 0.05, nodes: focus.length ? focus : undefined }} minZoom={0.03} maxZoom={2} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}>
+            <Background gap={32} color="#1e293b" />
+            <Controls showInteractive={false} />
+            <MiniMap pannable zoomable nodeColor={(n) => (n.type === 'audience' ? '#8b5cf6' : n.type === 'pain' ? '#64748b' : '#334155')} maskColor="rgba(2,6,23,.7)" />
+          </ReactFlow>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MapPage() {
   const [params, setParams] = useSearchParams();
-  const view = params.get('view') === 'ads' ? 'ads' : 'plan';
+  const view = ['ads', 'creatives'].includes(params.get('view')) ? params.get('view') : 'plan';
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        {[['plan', 'Воронки'], ['ads', 'Оголошення']].map(([k, label]) => <button key={k} className={clsx('btn !py-1.5', view === k ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => setParams({ view: k })}>{label}</button>)}
-        <span className="text-xs text-slate-500 ml-2">{view === 'plan' ? 'Конструктор: креативи → шлях → продаж. Працює без рекламного кабінету.' : 'Реальні оголошення з кабінету і ті, хто з них прийшов.'}</span>
+        {[['plan', 'Воронки'], ['creatives', 'Креативи'], ['ads', 'Оголошення']].map(([k, label]) => <button key={k} className={clsx('btn !py-1.5', view === k ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => setParams({ view: k })}>{label}</button>)}
+        <span className="text-xs text-slate-500 ml-2">{view === 'plan' ? 'Конструктор: креативи → шлях → продаж. Працює без рекламного кабінету.' : view === 'creatives' ? 'Усі креативи за аудиторіями й болями.' : 'Реальні оголошення з кабінету і ті, хто з них прийшов.'}</span>
       </div>
-      {view === 'plan' ? <PlanView /> : <AdsMapView />}
+      {view === 'plan' ? <PlanView /> : view === 'creatives' ? <CreativesMapView /> : <AdsMapView />}
     </div>
   );
 }

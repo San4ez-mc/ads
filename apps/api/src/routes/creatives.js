@@ -10,6 +10,7 @@ const { period } = require('./ads');
 const { buildMapData } = require('./map');
 const { buildAdvice } = require('../lib/advice');
 const { logAction } = require('../services/journal');
+const { withPain } = require('../lib/pains');
 
 const router = express.Router();
 
@@ -53,7 +54,7 @@ router.post('/audiences/sync', asyncHandler(async (req, res) => {
 
 router.get('/creatives', asyncHandler(async (req, res) => {
   const { url, key, pid } = await link(req.project);
-  res.json({ ok: true, data: { creatives: await c2.creatives(url, key, pid, Number(req.query.limit) || 60) } });
+  res.json({ ok: true, data: { creatives: (await c2.creatives(url, key, pid, Number(req.query.limit) || 60)).map(withPain) } });
 }));
 
 /** Побажання до нових креативів, складені з порад: що замінити, що розвинути. Людина може прибрати зайве й дописати своє. */

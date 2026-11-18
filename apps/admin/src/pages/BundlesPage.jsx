@@ -7,6 +7,13 @@ import { COLOR } from '../lib/mapLayout';
 const COLS = [['draft', 'Чернетка', 'Ще не запускали'], ['test', 'Тест', 'Крутиться, збираємо дані'], ['works', 'Працює', 'Ціна продажу в межах цілі'], ['scale', 'Масштабуємо', 'Додаємо бюджет'], ['fails', 'Не працює', 'Закрито з підсумком']];
 const EMPTY = { name: '', code: '', hypothesis: '', audienceId: '', product: '', promise: '', angle: '', pathText: '', testBudgetUsd: '', stopRule: '', verdict: '', status: 'draft' };
 
+// Креативи групами за болем (порядок за кодом болю; без болю — в кінці).
+function groupByPain(list) {
+  const m = new Map();
+  for (const c of list) { const k = c.pain ? c.pain.code : ''; if (!m.has(k)) m.set(k, { key: k || 'none', title: c.pain ? `${c.pain.title} — ${c.pain.persona}` : 'Біль не визначено', items: [] }); m.get(k).items.push(c); }
+  return [...m.entries()].sort(([a], [b]) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b)).map(([, g]) => g);
+}
+
 function Editor({ bundle, audiences, elements, onClose, onSaved }) {
   const [f, setF] = useState(() => (bundle ? { name: bundle.name, code: bundle.code || '', hypothesis: bundle.hypothesis || '', audienceId: bundle.audience?.id || '', product: bundle.product || '', promise: bundle.promise || '', angle: bundle.angle || '', path: bundle.path || [], creativeIds: bundle.creativeIds || [], testBudgetUsd: bundle.testBudgetUsd ?? '', stopRule: bundle.stopRule?.text || '', verdict: bundle.verdict || '', status: bundle.status } : { ...EMPTY, path: [] }));
   const [errs, setErrs] = useState({});
@@ -17,6 +24,7 @@ function Editor({ bundle, audiences, elements, onClose, onSaved }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [library, setLibrary] = useState(null); // креативи з контент-платформи (null — ще вантажимо, [] — нема або не підключено)
   useEffect(() => { api.creatives().then((d) => setLibrary(d.creatives)).catch(() => setLibrary([])); }, []);
+  const setGroup = (ids, on) => setF((cur) => { const rest = (cur.creativeIds || []).filter((x) => !ids.includes(x)); return { ...cur, creativeIds: on ? [...rest, ...ids] : rest }; });
   const toggleCreative = (id) => setF((cur) => ({ ...cur, creativeIds: (cur.creativeIds || []).includes(id) ? cur.creativeIds.filter((x) => x !== id) : [...(cur.creativeIds || []), id] }));
   const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setErrs({ ...errs, [k]: '' }); setError(''); };
   const closing = ['works', 'fails'].includes(f.status);
@@ -62,14 +70,25 @@ function Editor({ bundle, audiences, elements, onClose, onSaved }) {
       <fieldset>
         <legend className="lbl">Креативи цієї зв'язки (з контент-платформи; ще не обовʼязково запущені в рекламі)</legend>
         {library === null ? <div className="text-sm text-slate-500">Завантажую…</div> : library.length === 0 ? <div className="text-sm text-slate-500">Креативів нема або контент-платформу не підключено. <Link className="text-brand-light hover:underline" to="/creatives">Замовити нові</Link></div> : (
-          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}>
-            {library.map((c) => {
-              const on = (f.creativeIds || []).includes(c.id);
+          <div className="space-y-4">
+            {groupByPain(library).map((g) => {
+              const ids = g.items.map((c) => c.id); const all = ids.every((id) => (f.creativeIds || []).includes(id));
               return (
-                <button type="button" key={c.id} onClick={() => toggleCreative(c.id)} aria-pressed={on} title={c.hook || c.topic || ''} className={clsx('rounded-lg overflow-hidden border-2 text-left bg-slate-900', on ? 'border-brand' : 'border-slate-700 opacity-80 hover:opacity-100')}>
-                  <div className="aspect-[4/5] bg-slate-950 flex items-center justify-center">{c.mediaUrl && c.mediaType === 'image' ? <img src={c.mediaUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-full max-w-full object-contain" /> : <span className="text-[11px] text-slate-500 px-1 text-center">{c.mediaType === 'video' ? 'відео' : 'без зображення'}</span>}</div>
-                  <div className="px-1.5 py-1 text-[11px] text-slate-300 line-clamp-2">№{c.number} {c.hook || c.topic || ''}</div>
-                </button>
+                <div key={g.key}>
+                  <div className="flex items-center gap-2 mb-1.5"><span className="text-sm text-slate-200">{g.title}</span><span className="text-xs text-slate-500">{g.items.length}</span>
+                    <button type="button" className="text-xs text-brand-light hover:underline ml-auto" onClick={() => setGroup(ids, !all)}>{all ? 'Зняти всю групу' : 'Додати всю групу'}</button></div>
+                  <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}>
+                    {g.items.map((c) => {
+                      const on = (f.creativeIds || []).includes(c.id);
+                      return (
+                        <button type="button" key={c.id} onClick={() => toggleCreative(c.id)} aria-pressed={on} title={c.hook || c.topic || ''} className={clsx('rounded-lg overflow-hidden border-2 text-left bg-slate-900', on ? 'border-brand' : 'border-slate-700 opacity-80 hover:opacity-100')}>
+                          <div className="aspect-[4/5] bg-slate-950 flex items-center justify-center">{c.mediaUrl && c.mediaType === 'image' ? <img src={c.mediaUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-full max-w-full object-contain" /> : <span className="text-[11px] text-slate-500 px-1 text-center">{c.mediaType === 'video' ? 'відео' : 'без зображення'}</span>}</div>
+                          <div className="px-1.5 py-1 text-[11px] text-slate-300 line-clamp-2">№{c.number} {c.hook || c.topic || ''}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </div>
