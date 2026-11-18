@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, MiniMap, Handle, Position, useStore } 
 import '@xyflow/react/dist/style.css';
 import clsx from 'clsx';
 import { api, fmt } from '../api/client';
-import { buildMap, COLOR } from '../lib/mapLayout';
+import { buildMap, buildPlanMap, COLOR } from '../lib/mapLayout';
 
 const PERIODS = [{ d: 1, label: 'Сьогодні' }, { d: 7, label: '7 днів' }, { d: 14, label: '14 днів' }, { d: 30, label: '30 днів' }];
 const range = (days) => { const to = new Date(); const from = new Date(to.getTime() - (days - 1) * 86400000); return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }; };
@@ -73,6 +73,8 @@ function ElementNode({ data }) {
   const e = data.element;
   return (
     <div className="h-full w-full rounded-2xl border border-slate-700 bg-slate-900/40">
+      <Handle type="target" position={Position.Left} style={hidden} />
+      <Handle type="source" position={Position.Right} style={hidden} />
       <div className="px-5 pt-4"><span className="text-base text-brand-light mr-3">{TYPE[e.type] || e.type}</span><span className="text-2xl font-medium">{e.name}</span>{e.domain && <span className="text-base text-slate-500 ml-3">{e.domain}</span>}</div>
     </div>
   );
@@ -84,9 +86,9 @@ function StepNode({ data }) {
     <div className={clsx('h-full w-full rounded-2xl border-2 px-5 py-4 flex flex-col', s.isSale ? 'border-emerald-600 bg-emerald-950/50' : data.side ? 'border-dashed border-slate-700 bg-slate-900/60' : 'border-slate-600 bg-slate-900')}>
       <Handle type="target" position={Position.Left} style={hidden} />
       <div className="text-lg text-slate-300 truncate">{s.title}</div>
-      <div className="text-5xl font-medium leading-tight mt-1">{fmt.int(data.people)}<span className="text-base text-slate-400 font-normal"> людей</span></div>
+      <div className="text-5xl font-medium leading-tight mt-1">{data.people === null || data.people === undefined ? '—' : fmt.int(data.people)}{data.people !== null && data.people !== undefined && <span className="text-base text-slate-400 font-normal"> людей</span>}</div>
       <div className="text-base text-slate-400 mt-auto">
-        {data.side ? (data.fromFirst !== null ? <>бічний вихід · {data.fromFirst}% від входу</> : 'бічний вихід') : data.fromPrev !== null ? <>{data.fromPrev}% від попереднього</> : 'вхід'}
+        {data.people === null || data.people === undefined ? (data.side ? 'бічний вихід · ще нема даних' : 'ще нема даних') : data.side ? (data.fromFirst !== null ? <>бічний вихід · {data.fromFirst}% від входу</> : 'бічний вихід') : data.fromPrev !== null ? <>{data.fromPrev}% від попереднього</> : 'вхід'}
         {s.isSale && data.amount ? <> · {fmt.money(data.amount)}</> : null}
       </div>
       <Handle type="source" position={Position.Right} style={hidden} />
@@ -115,7 +117,7 @@ function SaleNode({ data }) {
     <div className="h-full w-full rounded-3xl border-2 border-emerald-600 bg-emerald-950/60 p-6 flex flex-col">
       <Handle type="target" position={Position.Left} style={hidden} />
       <div className="text-xl text-emerald-200">Продаж</div>
-      <div className="text-6xl font-medium leading-tight">{fmt.int(data.people)}</div>
+      <div className="text-6xl font-medium leading-tight">{data.people === null || data.people === undefined ? '—' : fmt.int(data.people)}</div>
       <div className="text-lg text-slate-300">на {fmt.money(data.amount)}</div>
       <div className="mt-auto text-base text-slate-400">ціна продажу</div>
       <div className="text-4xl font-medium" style={{ color: tone }}>{fmt.money(data.cost)}</div>
@@ -124,7 +126,67 @@ function SaleNode({ data }) {
   );
 }
 
-const nodeTypes = { ad: AdNode, campaign: CampaignNode, setLabel: SetLabel, element: ElementNode, step: StepNode, ghost: GhostNode, sale: SaleNode };
+const STATUS_NAME = { draft: 'чернетка', test: 'тест', works: 'працює', scale: 'масштабуємо', fails: 'не працює' };
+
+function LaneNode({ data }) {
+  const { lane, target, metaConnected } = data; const b = lane.bundle; const m = lane.metrics;
+  return (
+    <div className="h-full w-full rounded-2xl border border-slate-700 bg-slate-900/70 px-5 py-3 flex flex-col justify-center gap-1">
+      <div className="flex items-center gap-3">
+        {b.code && <span className="text-sm px-2 py-0.5 rounded bg-slate-800 text-slate-200">[{b.code}]</span>}
+        <span className="text-2xl font-medium">{b.name}</span>
+        <span className="text-sm px-2 py-0.5 rounded bg-brand/20 text-brand-light">{STATUS_NAME[b.status] || b.status}</span>
+      </div>
+      <div className="text-base text-slate-400 truncate">{b.hypothesis || b.promise || ''}</div>
+      <div className="flex items-center gap-4 text-sm text-slate-400">
+        {b.audience && <span>Аудиторія: <span className="text-slate-200">{b.audience.name}</span></span>}
+        <span>{m.hasAds ? `Витрачено ${fmt.money(m.spend)} · продажів ${m.sales}` : metaConnected ? 'Оголошень зв\'язки ще нема' : 'Цифри реклами зʼявляться після підключення кабінету'}</span>
+        <Link to={'/creatives?bundle=' + b.id} className="text-brand-light hover:underline ml-auto">Замовити креативи</Link>
+        <Link to="/bundles" className="text-brand-light hover:underline">Редагувати зв'язку</Link>
+      </div>
+    </div>
+  );
+}
+
+function PlannedNode({ data }) {
+  const c = data.c; const img = c.mediaUrl;
+  return (
+    <div className="h-full w-full rounded-xl overflow-hidden bg-slate-900 border-2 border-dashed border-slate-600 flex flex-col">
+      <div className="h-[300px] bg-slate-950 flex items-center justify-center shrink-0">
+        {img && c.mediaType === 'image' ? <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false} className="max-h-full max-w-full object-contain" /> : <div className="px-6 text-center text-sm text-slate-400">{c.mediaType === 'video' ? 'Відео' : 'Зображення ще створюється'}</div>}
+      </div>
+      <div className="p-3 flex-1 min-h-0">
+        <div className="flex items-center gap-2"><span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">№{c.number}</span><span className="text-[11px] text-slate-500">не запущено в рекламі</span></div>
+        <div className="text-sm font-medium leading-snug mt-1 line-clamp-2">{c.hook || c.topic || 'Без заголовка'}</div>
+      </div>
+      <Handle type="source" position={Position.Right} style={hidden} />
+    </div>
+  );
+}
+
+function AddCreativeNode({ data }) {
+  return (
+    <div className="h-full w-full rounded-xl border-2 border-dashed border-slate-600 bg-slate-900/40 p-5 flex flex-col items-center justify-center text-center gap-3">
+      <Handle type="source" position={Position.Right} style={hidden} />
+      <div className="text-lg text-slate-300">Креативи ще не додано</div>
+      <div className="text-sm text-slate-500">{data.content ? 'Оберіть готові з контент-платформи у зв\'язці або замовте нові.' : 'Підключіть контент-платформу, щоб підбирати креативи.'}</div>
+      <div className="flex gap-3 text-sm"><Link className="text-brand-light hover:underline" to={'/creatives?bundle=' + data.bundleId}>Замовити</Link><Link className="text-brand-light hover:underline" to="/bundles">Підібрати</Link></div>
+    </div>
+  );
+}
+
+function NoteNode({ data }) {
+  return (
+    <div className="h-full w-full rounded-2xl border-2 border-dashed border-slate-600 bg-slate-900/40 px-5 py-4 flex flex-col justify-center">
+      <Handle type="target" position={Position.Left} style={hidden} />
+      <Handle type="source" position={Position.Right} style={hidden} />
+      <div className="text-sm text-slate-500 mb-1">Крок без підключених даних</div>
+      <div className="text-lg text-slate-200">{data.note || 'Без опису'}</div>
+    </div>
+  );
+}
+
+const nodeTypes = { ad: AdNode, campaign: CampaignNode, setLabel: SetLabel, element: ElementNode, step: StepNode, ghost: GhostNode, sale: SaleNode, lane: LaneNode, planned: PlannedNode, addCreative: AddCreativeNode, note: NoteNode };
 
 function AdPanel({ ad, onClose }) {
   const rows = [['Витрачено', fmt.money(ad.spend)], ['Покази', fmt.int(ad.impressions)], ['Переходи', fmt.int(ad.linkClicks)], ['Ціна переходу', fmt.money2(ad.cpc)], ['Частка переходів', ad.ctr !== null ? `${ad.ctr}%` : '—'], ['Продажі', ad.sales], ['Виручка', fmt.money(ad.revenue)], ['Ціна продажу', fmt.money(ad.saleCost)]];
@@ -147,7 +209,7 @@ function AdPanel({ ad, onClose }) {
   );
 }
 
-export default function MapPage() {
+function AdsMapView() {
   const [days, setDays] = useState(7);
   const [all, setAll] = useState(false);
   const [data, setData] = useState(null);
@@ -183,7 +245,7 @@ export default function MapPage() {
   const empty = allAds.length === 0;
 
   return (
-    <div className="flex flex-col gap-3" style={{ height: 'calc(100vh - 96px)' }}>
+    <div className="flex flex-col gap-3" style={{ height: 'calc(100vh - 150px)' }}>
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
           {PERIODS.map((p) => <button key={p.d} className={clsx('btn !py-1.5', days === p.d ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => setDays(p.d)}>{p.label}</button>)}
@@ -214,6 +276,62 @@ export default function MapPage() {
           {one && <AdPanel ad={one} onClose={() => setSelected(new Set())} />}
         </div>
       )}
+    </div>
+  );
+}
+
+// План воронок: працює без рекламного кабінету. Доріжка на кожну зв'язку: креативи → шлях → продаж.
+function PlanView() {
+  const [params, setParams] = useSearchParams();
+  const bundleId = params.get('bundle') || '';
+  const [days, setDays] = useState(7);
+  const [data, setData] = useState(null);
+  const [bundles, setBundles] = useState([]);
+  const [error, setError] = useState('');
+  useEffect(() => { api.bundles().then((d) => setBundles(d.bundles)).catch(() => {}); }, []);
+  useEffect(() => { setError(''); api.plan({ ...range(days), bundle: bundleId || undefined }).then(setData).catch((e) => setError(e.message)); }, [days, bundleId]);
+  const { nodes, edges } = useMemo(() => (data ? buildPlanMap(data) : { nodes: [], edges: [] }), [data]);
+  if (error) return <div className="card p-6 text-red-300 text-sm">{error}</div>;
+  if (!data) return <div className="text-slate-500 text-sm">Завантаження…</div>;
+  // Усі воронки одразу: на старті показуємо перші дві крупно, решту видно, якщо відʼїхати.
+  const focusIds = (data.lanes || []).slice(0, bundleId ? 1 : 2).map((l) => `${l.bundle.id}:`);
+  const focus = nodes.filter((n) => focusIds.some((p) => n.id.startsWith(p))).map((n) => ({ id: n.id }));
+  return (
+    <div className="flex flex-col gap-3" style={{ height: 'calc(100vh - 150px)' }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <select aria-label="Зв'язка" className="inp !w-auto max-w-[320px]" value={bundleId} onChange={(e) => setParams(e.target.value ? { view: 'plan', bundle: e.target.value } : { view: 'plan' })}>
+          <option value="">Усі воронки</option>
+          {bundles.map((b) => <option key={b.id} value={b.id}>{b.code ? `[${b.code}] ` : ''}{b.name}</option>)}
+        </select>
+        <div className="flex gap-1">{PERIODS.map((p) => <button key={p.d} className={clsx('btn !py-1.5', days === p.d ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => setDays(p.d)}>{p.label}</button>)}</div>
+        <span className="text-xs text-slate-400 ml-auto">{data.metaConnected ? 'Цифри реклами додаються до кожної воронки автоматично.' : 'Рекламний кабінет не підключено: бачите план воронок, цифри зʼявляться після підключення.'}</span>
+        {!data.metaConnected && <Link to="/connections" className="btn-ghost !py-1.5">Підключити кабінет</Link>}
+      </div>
+      {data.lanes.length === 0 ? (
+        <div className="card p-8 text-center"><h2 className="text-lg font-medium mb-2">Воронок ще нема</h2><p className="text-slate-400 text-sm mb-4">Створіть першу зв'язку: аудиторія, обіцянка і шлях.</p><Link to="/bundles" className="btn-primary">До зв'язок</Link></div>
+      ) : (
+        <div className="relative flex-1 rounded-xl overflow-hidden border border-slate-800">
+          <ReactFlow key={bundleId || 'all'} nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode="dark" fitView fitViewOptions={{ padding: 0.05, nodes: focus }} minZoom={0.03} maxZoom={2} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}>
+            <Background gap={32} color="#1e293b" />
+            <Controls showInteractive={false} />
+            <MiniMap pannable zoomable nodeColor={(n) => (n.type === 'sale' ? '#34d399' : n.type === 'lane' ? '#8b5cf6' : '#334155')} maskColor="rgba(2,6,23,.7)" />
+          </ReactFlow>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function MapPage() {
+  const [params, setParams] = useSearchParams();
+  const view = params.get('view') === 'ads' ? 'ads' : 'plan';
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        {[['plan', 'Воронки'], ['ads', 'Оголошення']].map(([k, label]) => <button key={k} className={clsx('btn !py-1.5', view === k ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => setParams({ view: k })}>{label}</button>)}
+        <span className="text-xs text-slate-500 ml-2">{view === 'plan' ? 'Конструктор: креативи → шлях → продаж. Працює без рекламного кабінету.' : 'Реальні оголошення з кабінету і ті, хто з них прийшов.'}</span>
+      </div>
+      {view === 'plan' ? <PlanView /> : <AdsMapView />}
     </div>
   );
 }

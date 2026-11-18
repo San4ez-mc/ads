@@ -45,6 +45,7 @@ export const api = {
   overview: (p) => get(`/overview${qs(p)}`),
   ads: (p) => get(`/ads${qs(p)}`),
   map: (p) => get(`/map${qs(p)}`),
+  plan: (p) => get(`/map/plan${qs(p)}`),
   advice: () => get('/advice'),
   clients: () => get('/clients'),
   clientCandidates: () => get('/clients/candidates'),

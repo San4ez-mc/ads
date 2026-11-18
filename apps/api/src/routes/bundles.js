@@ -83,6 +83,7 @@ function bundleData(b, { partial } = {}) {
   if (b.path !== undefined) data.path = (Array.isArray(b.path) ? b.path : []).slice(0, 12).map((p) => ({ key: str(p.key, 120), note: str(p.note, 300) })).filter((p) => p.key || p.note);
   if (b.testBudgetUsd !== undefined) { const n = b.testBudgetUsd === null || b.testBudgetUsd === '' ? null : Number(b.testBudgetUsd); if (n !== null && !(n >= 0 && n <= 100000)) throw new ValidationError('Бюджет тесту — число від 0'); data.testBudgetUsd = n; }
   if (b.stopRule !== undefined) data.stopRule = { text: str(b.stopRule?.text ?? b.stopRule, 600) };
+  if (b.creativeIds !== undefined) data.creativeIds = [...new Set((Array.isArray(b.creativeIds) ? b.creativeIds : []).map((x) => String(x).slice(0, 60)).filter(Boolean))].slice(0, 30);
   if (b.status !== undefined) { if (!STATUSES.includes(b.status)) throw new ValidationError(`Стан: ${STATUSES.join(', ')}`); data.status = b.status; }
   return data;
 }
@@ -101,7 +102,7 @@ router.get('/bundles', asyncHandler(async (req, res) => {
     const budget = b.testBudgetUsd === null ? null : Number(b.testBudgetUsd);
     const v = verdict({ spend, sales, target });
     return {
-      id: b.id, name: b.name, code: b.code, hypothesis: b.hypothesis, product: b.product, promise: b.promise, angle: b.angle, path: b.path, status: b.status,
+      id: b.id, name: b.name, code: b.code, creativeIds: Array.isArray(b.creativeIds) ? b.creativeIds : [], hypothesis: b.hypothesis, product: b.product, promise: b.promise, angle: b.angle, path: b.path, status: b.status,
       testBudgetUsd: budget, stopRule: b.stopRule, verdict: b.verdict, audience: b.audience, startedAt: b.startedAt, endedAt: b.endedAt,
       metrics: { ads: ads.length, running: ads.filter((a) => a.running).length, spend: round2(spend), spendUsd: round2(spend / rate), linkClicks: clicks, sales, revenue: round2(revenue), upsellRevenue: round2(upsell), upsellCount, returnPerSale: sales ? round2((revenue + upsell) / sales) : null, saleCost: sales ? round2(spend / sales) : null, budgetUsedPct: budget ? Math.round((spend / rate / budget) * 100) : null, state: v, stateLabel: LABEL[v] },
     };

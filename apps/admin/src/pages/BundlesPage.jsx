@@ -8,13 +8,16 @@ const COLS = [['draft', 'Чернетка', 'Ще не запускали'], ['t
 const EMPTY = { name: '', code: '', hypothesis: '', audienceId: '', product: '', promise: '', angle: '', pathText: '', testBudgetUsd: '', stopRule: '', verdict: '', status: 'draft' };
 
 function Editor({ bundle, audiences, elements, onClose, onSaved }) {
-  const [f, setF] = useState(() => (bundle ? { name: bundle.name, code: bundle.code || '', hypothesis: bundle.hypothesis || '', audienceId: bundle.audience?.id || '', product: bundle.product || '', promise: bundle.promise || '', angle: bundle.angle || '', path: bundle.path || [], testBudgetUsd: bundle.testBudgetUsd ?? '', stopRule: bundle.stopRule?.text || '', verdict: bundle.verdict || '', status: bundle.status } : { ...EMPTY, path: [] }));
+  const [f, setF] = useState(() => (bundle ? { name: bundle.name, code: bundle.code || '', hypothesis: bundle.hypothesis || '', audienceId: bundle.audience?.id || '', product: bundle.product || '', promise: bundle.promise || '', angle: bundle.angle || '', path: bundle.path || [], creativeIds: bundle.creativeIds || [], testBudgetUsd: bundle.testBudgetUsd ?? '', stopRule: bundle.stopRule?.text || '', verdict: bundle.verdict || '', status: bundle.status } : { ...EMPTY, path: [] }));
   const [errs, setErrs] = useState({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [newAud, setNewAud] = useState('');
   const [auds, setAuds] = useState(audiences);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [library, setLibrary] = useState(null); // креативи з контент-платформи (null — ще вантажимо, [] — нема або не підключено)
+  useEffect(() => { api.creatives().then((d) => setLibrary(d.creatives)).catch(() => setLibrary([])); }, []);
+  const toggleCreative = (id) => setF((cur) => ({ ...cur, creativeIds: (cur.creativeIds || []).includes(id) ? cur.creativeIds.filter((x) => x !== id) : [...(cur.creativeIds || []), id] }));
   const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setErrs({ ...errs, [k]: '' }); setError(''); };
   const closing = ['works', 'fails'].includes(f.status);
 
@@ -33,7 +36,7 @@ function Editor({ bundle, audiences, elements, onClose, onSaved }) {
     if (closing && !f.verdict.trim()) er.verdict = 'Запишіть, що дізнались, — без цього тест не закривається';
     setErrs(er); if (Object.keys(er).length) return;
     setBusy(true); setError('');
-    const body = { name: f.name, code: f.code, hypothesis: f.hypothesis, audienceId: f.audienceId || null, product: f.product, promise: f.promise, angle: f.angle, path: f.path, testBudgetUsd: f.testBudgetUsd === '' ? null : Number(f.testBudgetUsd), stopRule: { text: f.stopRule }, verdict: f.verdict, status: f.status };
+    const body = { name: f.name, code: f.code, hypothesis: f.hypothesis, audienceId: f.audienceId || null, product: f.product, promise: f.promise, angle: f.angle, path: f.path, creativeIds: f.creativeIds || [], testBudgetUsd: f.testBudgetUsd === '' ? null : Number(f.testBudgetUsd), stopRule: { text: f.stopRule }, verdict: f.verdict, status: f.status };
     try { if (bundle) await api.patchBundle(bundle.id, body); else await api.createBundle(body); onSaved(); } catch (err) { setError(err.message); setBusy(false); }
   }
   async function remove() { setBusy(true); try { await api.deleteBundle(bundle.id); onSaved(); } catch (err) { setError(err.message); setBusy(false); } }
@@ -56,6 +59,23 @@ function Editor({ bundle, audiences, elements, onClose, onSaved }) {
         <div><label className="lbl" htmlFor="b-prom">Обіцянка</label><textarea id="b-prom" rows={2} className="inp" value={f.promise} onChange={set('promise')} placeholder="1 зустріч → план автоматизації" /></div>
         <div><label className="lbl" htmlFor="b-angle">Біль / кут креативів</label><textarea id="b-angle" rows={2} className="inp" value={f.angle} onChange={set('angle')} placeholder="Одна людина робить усе вручну" /></div>
       </div>
+      <fieldset>
+        <legend className="lbl">Креативи цієї зв'язки (з контент-платформи; ще не обовʼязково запущені в рекламі)</legend>
+        {library === null ? <div className="text-sm text-slate-500">Завантажую…</div> : library.length === 0 ? <div className="text-sm text-slate-500">Креативів нема або контент-платформу не підключено. <Link className="text-brand-light hover:underline" to="/creatives">Замовити нові</Link></div> : (
+          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}>
+            {library.map((c) => {
+              const on = (f.creativeIds || []).includes(c.id);
+              return (
+                <button type="button" key={c.id} onClick={() => toggleCreative(c.id)} aria-pressed={on} title={c.hook || c.topic || ''} className={clsx('rounded-lg overflow-hidden border-2 text-left bg-slate-900', on ? 'border-brand' : 'border-slate-700 opacity-80 hover:opacity-100')}>
+                  <div className="aspect-[4/5] bg-slate-950 flex items-center justify-center">{c.mediaUrl && c.mediaType === 'image' ? <img src={c.mediaUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-full max-w-full object-contain" /> : <span className="text-[11px] text-slate-500 px-1 text-center">{c.mediaType === 'video' ? 'відео' : 'без зображення'}</span>}</div>
+                  <div className="px-1.5 py-1 text-[11px] text-slate-300 line-clamp-2">№{c.number} {c.hook || c.topic || ''}</div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <p className="text-xs text-slate-500 mt-1">Обрано: {(f.creativeIds || []).length}. Вибрані креативи зʼявляться зліва у воронці на карті.</p>
+      </fieldset>
       <fieldset>
         <legend className="lbl">Шлях (зліва направо)</legend>
         <div className="space-y-2">

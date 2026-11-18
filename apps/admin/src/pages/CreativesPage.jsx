@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { api } from '../api/client';
 
@@ -7,7 +7,8 @@ const STATUS = { draft: 'чернетка', scheduled: 'заплановано',
 const GEN = { pending: 'ще створюється', processing: 'створюється', done: 'готово', failed: 'помилка' };
 
 function Order({ bundles, wishes, onDone }) {
-  const [f, setF] = useState({ bundleId: '', format: 'image', count: '3', note: '' });
+  const [sp] = useSearchParams();
+  const [f, setF] = useState({ bundleId: sp.get('bundle') || '', format: 'image', count: '3', note: '' });
   const [picked, setPicked] = useState(() => new Set());
   const [errs, setErrs] = useState({});
   const [busy, setBusy] = useState(false);

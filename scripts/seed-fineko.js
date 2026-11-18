@@ -33,8 +33,23 @@ const ELEMENTS = [
     ['wrote', 'Написав у дірект', 1, null, false, null, null], ['answered', 'Отримав відповідь', 2, null, false, null, null],
     ['offer', 'Отримав пропозицію консультації', 3, null, false, null, null], ['paid', 'Оплатив', 4, null, true, 'manual:consult', PRICE],
   ]],
+  ['site', 'consult-lp', 'Лендінг: запис на безкоштовну консультацію (ще не зроблено)', { planned: true }, [
+    ['view', 'Відкрив сторінку', 1, null, false, null, null], ['cta_click', 'Натиснув «Записатись»', 2, null, false, null, null], ['form_submit', 'Обрав час і залишив контакт', 3, null, false, 'calendar:matsuk', null],
+  ]],
+  ['flows', 'quiz-bot', 'Бот-тест «де у вас зникає час» (ще не зроблено)', { planned: true }, [
+    ['start', 'Почав тест', 1, null, false, null, null], ['answered', 'Відповів на питання', 2, null, false, null, null], ['result', 'Отримав свій результат', 3, null, false, null, null], ['offer', 'Побачив пропозицію консультації', 4, null, false, null, null],
+  ]],
+  ['manual', 'fb-form', 'Форма у Facebook (заявка без лендінгу)', { planned: true }, [
+    ['form_open', 'Відкрив форму', 1, null, false, null, null], ['lead', 'Залишив контакт', 2, null, false, null, null],
+  ]],
+  ['manual', 'video-case', 'Відео-розбір кейсу (до 60 с)', { planned: true }, [
+    ['viewed', 'Переглянув відео', 1, null, false, null, null], ['watched', 'Додивився понад половину', 2, null, false, null, null],
+  ]],
+  ['manual', 'retarget', 'Аудиторія повернення: ті, хто вже був', { planned: true }, [
+    ['audience', 'Потрапив в аудиторію повернення', 1, null, false, null, null], ['seen', 'Побачив нагадування', 2, null, false, null, null],
+  ]],
   ['manual', 'consult', 'Консультація і продаж далі (позначаєте вручну)', {}, [
-    ['done', 'Консультація відбулась', 1, null, false, null, null], ['upsell', 'Купив дорожчий продукт', 2, null, true, null, null],
+    ['done', 'Консультація відбулась', 1, null, false, null, null], ['upsell', 'Купив дорожчий продукт', 2, null, false, null, null],
   ]],
 ];
 
@@ -46,17 +61,17 @@ const BUNDLES = [
   ['B1', 'Реклама одразу на бота з картою автоматизацій', 'owner-routine', 'Без лендінгу заявка дешевша: людина одразу отримує карту автоматизацій, а бот продає консультацію.', 'Безкоштовна карта: що у вашому бізнесі автоматизувати', 'Отримайте карту автоматизацій за 5 хвилин',
     [['flows:bot-karta-sales', 'Реклама → одразу бот: карта, потім продаж консультації'], ['manual:consult', 'Консультація і продаж далі']]],
   ['C1', 'Лендінг → запис на коротку безкоштовну консультацію', 'owner-ai', 'Безкоштовна коротка розмова дає більше заявок; частина з них купує платний розбір або дорожчий продукт.', '20 хвилин: покажу перший крок до ШІ у вашому бізнесі', 'ШІ у бізнесі: з чого почати',
-    [[null, 'Реклама → лендінг із записом (лендінг ще треба зробити)'], ['calendar:matsuk', 'Запис на час'], ['manual:consult', 'Розмова і продаж далі']]],
+    [['site:consult-lp', 'Реклама → лендінг із записом (лендінг ще треба зробити)'], ['calendar:matsuk', 'Запис на час'], ['manual:consult', 'Розмова і продаж далі']]],
   ['D1', 'Реклама на повідомлення в Instagram (вручну)', 'sales-head', 'Людям простіше написати в дірект, ніж іти на сайт. Поки відповідаєте самі; якщо піде — ставимо бота.', 'Напишіть «заявки» — розкажу, як перестати їх губити', 'Заявки губляться між месенджерами',
     [['instagram:direct', 'Реклама → дірект, відповідаєте вручну'], ['manual:consult', 'Консультація і продаж далі']]],
   ['R1', 'Повернення тих, хто взяв карту і не купив', 'owner-routine', 'Люди, які вже були в боті чи на лендінгу, купують дешевше за нових. Потребує лічильника Meta на лендінгу.', 'Ви вже отримали карту — зробімо перший крок разом', 'Нагадування з кейсом і конкретним результатом',
-    [['site:auto-lp', 'Реклама лише на тих, хто вже був → лендінг'], ['flows:bot-karta-sales', 'Бот'], ['manual:consult', 'Консультація і продаж далі']]],
+    [['manual:retarget', 'Реклама лише на тих, хто вже був'], ['site:auto-lp', 'Лендінг'], ['flows:bot-karta-sales', 'Бот'], ['manual:consult', 'Консультація і продаж далі']]],
   ['F1', 'Форма прямо у Facebook, без лендінгу', 'owner-ai', 'Найдешевша заявка: контакт у два дотики, далі пише бот або ви. Якість нижча — годиться, щоб швидко перевірити біль.', 'Залиште контакт — надішлю план першого кроку', 'ШІ у бізнесі: з чого почати',
-    [[null, 'Реклама → форма у Facebook (заявки поки розбираєте вручну)'], ['manual:consult', 'Розмова і продаж']]],
+    [['manual:fb-form', 'Реклама → форма у Facebook'], ['flows:bot-karta-sales', 'Далі пише бот'], ['manual:consult', 'Розмова і продаж']]],
   ['Q1', 'Тест у боті «де у вас зникає час»', 'owner-routine', 'Людина, що відповіла на 5 питань про свій бізнес, охочіше йде на консультацію, а ви отримуєте матеріал до розмови.', 'Тест на 2 хвилини: де ваш бізнес втрачає час', 'Дізнайтесь, скільки годин на тиждень можна повернути',
-    [[null, 'Реклама → бот із тестом (воронку ще треба зробити)'], ['manual:consult', 'Консультація і продаж далі']]],
+    [['flows:quiz-bot', 'Реклама → бот із тестом (воронку ще треба зробити)'], ['calendar:matsuk', 'Запис на час'], ['manual:consult', 'Консультація і продаж далі']]],
   ['K1', 'Відео-розбір кейсу → запис', 'sales-head', 'Короткий кейс «було 20 хвилин — стало 30 секунд» переконує краще за обіцянку; тим, хто додивився, показуємо R1.', 'Подивіться, як це працює в реальному бізнесі', 'Кейс: заявка 20 хв → 30 с',
-    [['site:auto-lp', 'Відео до 60 с → лендінг'], ['flows:bot-karta-sales', 'Бот'], ['manual:consult', 'Консультація і продаж далі']]],
+    [['manual:video-case', 'Реклама: відео до 60 с'], ['site:auto-lp', 'Лендінг'], ['flows:bot-karta-sales', 'Бот'], ['manual:consult', 'Консультація і продаж далі']]],
 ];
 
 (async () => {
@@ -82,10 +97,15 @@ const BUNDLES = [
   }
 
   for (const [code, name, aud, hypothesis, promise, angle, pathRows] of BUNDLES) {
-    if (await db.bundle.findFirst({ where: { projectId: p.id, code } })) continue;
+    const have = await db.bundle.findFirst({ where: { projectId: p.id, code } });
+    if (have) {
+      if (have.status === 'draft' && Array.isArray(have.path) && have.path.some((x) => !x.key)) await db.bundle.update({ where: { id: have.id }, data: { path: pathRows.map(([key, note]) => ({ key, note })) } });
+      continue;
+    }
     await db.bundle.create({ data: { projectId: p.id, code, name, hypothesis, audienceId: audId.get(aud), product: `Розбір процесу, ${PRICE} грн`, promise, angle, path: pathRows.map(([key, note]) => ({ key, note })), status: 'draft', testBudgetUsd: 30, stopRule: { text: STOP } } });
     made.bundles += 1;
   }
+  await db.step.updateMany({ where: { key: 'upsell', element: { projectId: p.id, type: 'manual', ref: 'consult' } }, data: { isSale: false } });
   console.log(`Проєкт «${p.name}» (${p.id}): додано аудиторій ${made.audiences}, елементів ${made.elements}, кроків ${made.steps}, зв'язок ${made.bundles}`);
   await db.$disconnect();
 })().catch((e) => { console.error(e.message); process.exit(1); });

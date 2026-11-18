@@ -158,3 +158,94 @@ function flow(a, byKey) {
   if (ms.length) { const first = ms.reduce((x, y) => (y.order < x.order ? y : x)); const n = first.byAd[a.externalId] || 0; if (n) return n; }
   return a.linkClicks || 0;
 }
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// План воронок (без реклами): кожна зв'язка — доріжка зліва направо: креативи → кроки шляху → продаж.
+// Працює без рекламного кабінету: цифри (люди на кроках, ціна продажу) з'являються, коли є оголошення зв'язки.
+const LANE_HEAD = 120; const PLAN_CARD_W = 300; const PLAN_CARD_H = 430; const LANE_GAP = 90; const PATH_GAP = 150;
+
+function frameElement(nodes, e, x, y, pre) {
+  const side = e.steps.filter((s) => s.branch === 'side'); const main = e.steps.filter((s) => s.branch !== 'side');
+  const orders = [...new Set(main.map((s) => s.order))].sort((a, b) => a - b);
+  const rows = Math.max(1, ...orders.map((o) => main.filter((s) => s.order === o).length));
+  const cols = Math.max(orders.length, side.length, 1);
+  const width = FRAME_PAD * 2 + cols * STEP_W + Math.max(0, cols - 1) * STEP_GAP_X;
+  const mainH = rows * STEP_H + (rows - 1) * STEP_GAP_Y;
+  const height = EL_HEAD + mainH + (side.length ? STEP_GAP_Y + 30 + STEP_H : 0) + FRAME_PAD;
+  const frameId = `${pre}el:${e.key}`;
+  nodes.push({ id: frameId, type: 'element', position: { x, y }, draggable: false, selectable: false, data: { element: e }, style: { width, height } });
+  const first = main.length ? main.reduce((a, b) => (b.order < a.order ? b : a)) : null;
+  const firstPeople = first && first.people !== null ? first.people : null;
+  const inner = [];
+  side.forEach((s, i) => inner.push({ id: `${pre}st:${e.key}|${s.key}`, type: 'step', parentId: frameId, extent: 'parent', draggable: false, selectable: false, position: { x: FRAME_PAD + i * (STEP_W + STEP_GAP_X), y: EL_HEAD + mainH + STEP_GAP_Y + 30 }, data: { step: s, side: true, people: s.people, unknown: 0, amount: 0, fromPrev: null, fromFirst: firstPeople ? Math.round((s.people / firstPeople) * 1000) / 10 : null }, style: { width: STEP_W, height: STEP_H } }));
+  const edges = [];
+  for (const s of main) {
+    const col = orders.indexOf(s.order); const same = main.filter((q) => q.order === s.order); const row = same.indexOf(s);
+    const offset = (rows - same.length) * (STEP_H + STEP_GAP_Y) / 2;
+    const prev = prevStep(main, s);
+    const id = `${pre}st:${e.key}|${s.key}`;
+    const fromPrev = prev && prev.people ? Math.round(((s.people || 0) / prev.people) * 1000) / 10 : null;
+    inner.push({ id, type: 'step', parentId: frameId, extent: 'parent', draggable: false, selectable: false, position: { x: FRAME_PAD + col * (STEP_W + STEP_GAP_X), y: EL_HEAD + offset + row * (STEP_H + STEP_GAP_Y) }, data: { step: s, people: s.people, unknown: 0, amount: 0, fromPrev, fromFirst: null }, style: { width: STEP_W, height: STEP_H } });
+    if (prev) edges.push({ id: `${pre}e:${id}`, source: `${pre}st:${e.key}|${prev.key}`, target: id, style: { stroke: '#475569', strokeWidth: 1.5 } });
+  }
+  nodes.push(...inner);
+  return { frameId, width, height, edges };
+}
+
+export function buildPlanMap(data) {
+  const nodes = []; const edges = [];
+  let y = 0;
+  for (const lane of data.lanes) {
+    const pre = `${lane.bundle.id}:`;
+    const m = lane.metrics;
+    nodes.push({ id: `${pre}lane`, type: 'lane', position: { x: 0, y }, draggable: false, selectable: false, data: { lane, target: data.target, metaConnected: data.metaConnected }, style: { width: 900, height: LANE_HEAD - 20 } });
+    const bodyY = y + LANE_HEAD;
+
+    // 1) Креативи: підібрані з контент-платформи (ще не запущені) і вже запущені оголошення зв'язки.
+    const left = [];
+    lane.ads.forEach((a) => left.push({ kind: 'ad', a }));
+    lane.creatives.forEach((c) => left.push({ kind: 'planned', c }));
+    if (!left.length) left.push({ kind: 'add' });
+    const cols = left.length > 2 ? 2 : 1;
+    const rowsN = Math.ceil(left.length / cols);
+    const cellH = lane.ads.length ? AD_H + GAP : PLAN_CARD_H + GAP;
+    const leftNodes = [];
+    left.forEach((it, i) => {
+      const cx = (i % cols) * (PLAN_CARD_W + GAP); const cy = bodyY + Math.floor(i / cols) * cellH;
+      if (it.kind === 'ad') { const id = `${pre}ad:${it.a.externalId}`; nodes.push({ id, type: 'ad', position: { x: cx, y: cy }, draggable: false, data: { ad: it.a, target: data.target, picked: false, dim: false }, style: { width: AD_W, height: AD_H } }); leftNodes.push(id); }
+      else if (it.kind === 'planned') { const id = `${pre}pc:${it.c.id}`; nodes.push({ id, type: 'planned', position: { x: cx, y: cy }, draggable: false, selectable: false, data: { c: it.c }, style: { width: PLAN_CARD_W, height: PLAN_CARD_H } }); leftNodes.push(id); }
+      else { const id = `${pre}add`; nodes.push({ id, type: 'addCreative', position: { x: cx, y: cy }, draggable: false, selectable: false, data: { bundleId: lane.bundle.id, content: data.contentConnected }, style: { width: PLAN_CARD_W, height: 220 } }); leftNodes.push(id); }
+    });
+    const leftW = cols * PLAN_CARD_W + (cols - 1) * GAP;
+    const leftH = rowsN * cellH - GAP;
+
+    // 2) Шлях: елементи (рамки з кроками) і кроки-нотатки по порядку.
+    let x = leftW + PATH_GAP; let prevId = null; let maxH = 0; const pathNodes = [];
+    for (let i = 0; i < lane.path.length; i += 1) {
+      const it = lane.path[i];
+      let id; let w; let h;
+      if (it.kind === 'element') { const r = frameElement(nodes, it.element, x, bodyY, pre); id = r.frameId; w = r.width; h = r.height; edges.push(...r.edges); }
+      else { id = `${pre}note:${i}`; w = 300; h = 150; nodes.push({ id, type: 'note', position: { x, y: bodyY }, draggable: false, selectable: false, data: { note: it.note }, style: { width: w, height: h } }); }
+      pathNodes.push({ id, x, w, h });
+      if (prevId) edges.push({ id: `${pre}p:${prevId}>${id}`, source: prevId, target: id, style: { stroke: '#8b5cf6', strokeWidth: 2 }, animated: true });
+      prevId = id; x += w + PATH_GAP; maxH = Math.max(maxH, h);
+    }
+    // Вертикальне вирівнювання шляху по центру доріжки.
+    const laneBody = Math.max(leftH, maxH, 320);
+    for (const pn of pathNodes) { const n = nodes.find((q) => q.id === pn.id); n.position.y = bodyY + (laneBody - pn.h) / 2; }
+
+    // 3) Продаж зліва направо останнім.
+    const saleId = `${pre}sale`;
+    nodes.push({ id: saleId, type: 'sale', position: { x, y: bodyY + (laneBody - 300) / 2 }, draggable: false, selectable: false, data: { people: m.hasAds ? m.sales : null, amount: m.revenue, spend: m.spend, cost: m.saleCost, target: data.target }, style: { width: 320, height: 300 } });
+    if (prevId) edges.push({ id: `${pre}p:${prevId}>${saleId}`, source: prevId, target: saleId, style: { stroke: '#34d399', strokeWidth: 2 } });
+
+    // 4) Лінії від креативів до першого елемента шляху (пунктир, поки реклама не запущена).
+    if (pathNodes.length) for (const id of leftNodes) {
+      const launched = id.includes(':ad:');
+      const ad = launched ? lane.ads.find((a) => id.endsWith(`:ad:${a.externalId}`)) : null;
+      edges.push({ id: `${pre}c:${id}`, source: id, target: pathNodes[0].id, style: { stroke: ad ? (COLOR[ad.verdict] || COLOR.few) : '#64748b', strokeWidth: ad ? 3 : 1.5, strokeDasharray: ad ? undefined : '6 5' } });
+    }
+    y = bodyY + laneBody + LANE_GAP;
+  }
+  return { nodes, edges };
+}

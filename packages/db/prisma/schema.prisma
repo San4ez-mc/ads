@@ -316,6 +316,8 @@ model Bundle {
   status        String    @default("draft") // draft | test | works | fails | scale
   testBudgetUsd Decimal?  @map("test_budget_usd") @db.Decimal(12, 2)
   stopRule      Json      @default("{}") @map("stop_rule")
+  /// Креативи цієї зв'язки з контент-платформи (номери груп постів): ще не запущені, але вже підібрані.
+  creativeIds   Json      @default("[]") @map("creative_ids")
   verdict       String?   @db.Text
   startedAt     DateTime? @map("started_at")
   endedAt       DateTime? @map("ended_at")
