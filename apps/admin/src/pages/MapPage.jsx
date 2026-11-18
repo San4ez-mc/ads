@@ -153,7 +153,7 @@ function PlannedNode({ data }) {
   return (
     <div className="h-full w-full rounded-xl overflow-hidden bg-slate-900 border-2 border-dashed border-slate-600 flex flex-col">
       <div className="h-[300px] bg-slate-950 flex items-center justify-center shrink-0">
-        {img && c.mediaType === 'image' ? <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false} className="max-h-full max-w-full object-contain" /> : <div className="px-6 text-center text-sm text-slate-400">{c.mediaType === 'video' ? 'Відео' : 'Зображення ще створюється'}</div>}
+        {img && c.mediaType === 'image' ? <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false} className="max-h-full max-w-full object-contain" /> : img && c.mediaType === 'video' ? <video src={img} muted playsInline preload="metadata" className="max-h-full max-w-full object-contain" /> : <div className="px-6 text-center text-sm text-slate-400">{c.mediaType === 'video' ? 'Відео' : 'Зображення ще створюється'}</div>}
       </div>
       <div className="p-3 flex-1 min-h-0">
         <div className="flex items-center gap-2"><span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">№{c.number}</span><span className="text-[11px] text-slate-500">не запущено в рекламі</span></div>
@@ -218,7 +218,7 @@ function CreativeCardNode({ data }) {
     <div className="h-full w-full rounded-xl overflow-hidden bg-slate-900 border border-slate-700 flex flex-col">
       <Handle type="target" position={Position.Left} style={hidden} />
       <div className="h-[240px] bg-slate-950 flex items-center justify-center shrink-0">
-        {c.mediaUrl && c.mediaType === 'image' ? <img src={c.mediaUrl} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false} className="max-h-full max-w-full object-contain" /> : <div className="px-4 text-center text-sm text-slate-400">{c.mediaType === 'video' ? 'Відео' : 'Зображення ще створюється'}</div>}
+        {c.mediaUrl && c.mediaType === 'image' ? <img src={c.mediaUrl} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false} className="max-h-full max-w-full object-contain" /> : c.mediaUrl && c.mediaType === 'video' ? <video src={c.mediaUrl} muted playsInline preload="metadata" className="max-h-full max-w-full object-contain" /> : <div className="px-4 text-center text-sm text-slate-400">{c.mediaType === 'video' ? 'Відео' : 'Зображення ще створюється'}</div>}
       </div>
       <div className="p-2 flex-1 min-h-0 overflow-hidden">
         <div className="flex items-center gap-1.5"><span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">№{c.number}</span>{c.mediaType === 'video' && <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">відео</span>}</div>

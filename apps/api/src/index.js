@@ -28,9 +28,10 @@ const app = express();
 const PORT = Number(process.env.PORT || 4900);
 app.set('trust proxy', 1);
 
-// Креативи показуються з адрес Meta (картинки, мініатюри), тому img-src ширший; решта — лише свій origin.
+// Креативи показуються з адрес Meta (картинки, мініатюри) і з контент-платформи (картинки й відео креативів), тому img-src і media-src ширші; решта — лише свій origin.
+const C2_ORIGIN = process.env.CONTENT2_ORIGIN || 'https://content2.fineko.space';
 app.use(helmet({
-  contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', 'https://*.fbcdn.net', 'https://*.facebook.com', 'https://*.cdninstagram.com'], mediaSrc: ["'self'", 'https://*.fbcdn.net'], connectSrc: ["'self'"], objectSrc: ["'none'"], frameAncestors: ["'none'"] } },
+  contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', 'https://*.fbcdn.net', 'https://*.facebook.com', 'https://*.cdninstagram.com', C2_ORIGIN], mediaSrc: ["'self'", 'https://*.fbcdn.net', C2_ORIGIN], connectSrc: ["'self'"], objectSrc: ["'none'"], frameAncestors: ["'none'"] } },
   crossOriginResourcePolicy: false,
 }));
 app.use(express.json({ limit: '1mb' }));
