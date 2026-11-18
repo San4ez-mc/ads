@@ -8,7 +8,7 @@ const GEN = { pending: 'ще створюється', processing: 'створю�
 
 function Order({ bundles, wishes, onDone }) {
   const [sp] = useSearchParams();
-  const [f, setF] = useState({ bundleId: sp.get('bundle') || '', format: 'image', count: '3', note: '' });
+  const [f, setF] = useState({ bundleId: sp.get('bundle') || '', format: 'image', count: '3', note: sp.get('note') || '' });
   const [picked, setPicked] = useState(() => new Set());
   const [errs, setErrs] = useState({});
   const [busy, setBusy] = useState(false);

@@ -10,7 +10,7 @@ const { link } = require('./creatives');
 const c2 = require('../channels/content2');
 const { verdict, LABEL } = require('../lib/verdict');
 const { round2 } = require('../lib/money');
-const { withPain } = require('../lib/pains');
+const { withPain, PAINS } = require('../lib/pains');
 
 const router = express.Router();
 
@@ -78,6 +78,13 @@ router.get('/map/creatives', asyncHandler(async (req, res) => {
     const key = `${personaName || ''}|${pain ? pain.code : ''}`;
     if (!groups.has(key)) groups.set(key, { audience: personaName ? { id: aud ? aud.id : null, name: personaName } : null, pain: pain ? { code: pain.code, title: pain.title } : null, creatives: [] });
     groups.get(key).creatives.push({ id: c.id, number: c.number, status: c.status, mediaType: c.mediaType, mediaUrl: c.mediaUrl, hook: c.hook, topic: c.topic, text: (c.text || '').replace(/^Основний текст:\s*/i, '').slice(0, 140), bundles: usage.get(c.id) || [] });
+  }
+  // Заплановані болі без креативів: порожні блоки на карті з готовим текстом для замовлення.
+  for (const [code, p] of Object.entries(PAINS)) {
+    if (!p.planned) continue;
+    const key = `${p.persona}|${code}`;
+    const aud = audByName.get(p.persona.trim().toLowerCase());
+    groups.set(key, { audience: { id: aud ? aud.id : null, name: p.persona }, pain: { code, title: p.title, planned: true, orderNote: `Біль: «${p.title}». Аудиторія: ${p.persona}. Креативів на цей біль ще нема.` }, creatives: [] });
   }
   const list = [...groups.values()].sort((a, b) => (a.audience ? 0 : 1) - (b.audience ? 0 : 1) || String(a.audience?.name).localeCompare(String(b.audience?.name), 'uk') || String(a.pain?.code).localeCompare(String(b.pain?.code)));
   for (const g of list) g.creatives.sort((a, b) => b.number - a.number);

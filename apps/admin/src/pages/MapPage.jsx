@@ -205,7 +205,9 @@ function PainNode({ data }) {
       <Handle type="source" position={Position.Right} style={hidden} />
       <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">Біль</div>
       <div className="text-lg font-medium leading-snug">{p ? p.title : 'Біль у тексті не визначено'}</div>
-      <div className="text-sm text-slate-400 mt-1">{data.count} креативів · у воронках: {data.inFunnels}</div>
+      {p && p.planned
+        ? <div className="text-sm text-slate-400 mt-1">Креативів ще нема · <Link className="text-brand-light hover:underline" to={'/creatives?note=' + encodeURIComponent(p.orderNote || '')}>Замовити</Link></div>
+        : <div className="text-sm text-slate-400 mt-1">{data.count} креативів · у воронках: {data.inFunnels}</div>}
     </div>
   );
 }
