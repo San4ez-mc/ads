@@ -99,7 +99,9 @@ const BUNDLES = [
   for (const [code, name, aud, hypothesis, promise, angle, pathRows] of BUNDLES) {
     const have = await db.bundle.findFirst({ where: { projectId: p.id, code } });
     if (have) {
-      if (have.status === 'draft' && Array.isArray(have.path) && have.path.some((x) => !x.key)) await db.bundle.update({ where: { id: have.id }, data: { path: pathRows.map(([key, note]) => ({ key, note })) } });
+      // Початковий шлях: є кроки без елемента, або (R1, K1) ще не доданий перший ручний елемент — лише для чернеток, які ви не змінювали.
+      const untouched = Array.isArray(have.path) && (have.path.some((x) => !x.key) || (['R1', 'K1'].includes(code) && have.path[0] && have.path[0].key === 'site:auto-lp' && have.path.length === 3));
+      if (have.status === 'draft' && untouched) await db.bundle.update({ where: { id: have.id }, data: { path: pathRows.map(([key, note]) => ({ key, note })) } });
       continue;
     }
     await db.bundle.create({ data: { projectId: p.id, code, name, hypothesis, audienceId: audId.get(aud), product: `Розбір процесу, ${PRICE} грн`, promise, angle, path: pathRows.map(([key, note]) => ({ key, note })), status: 'draft', testBudgetUsd: 30, stopRule: { text: STOP } } });
