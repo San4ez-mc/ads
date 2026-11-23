@@ -82,6 +82,9 @@ test('карта креативів: групи за аудиторією й б�
   assert.strictEqual(pains.painCode({ text: 'Купили бота, а через 2 місяці ним ніхто не користується' }), 'D3');
   assert.strictEqual(pains.painCode({ text: 'Роботу трьох менеджерів може виконувати один ШІ-помічник' }), 'A1');
   assert.strictEqual(pains.painCode({ text: 'щось зовсім інше' }), null);
+  assert.strictEqual(pains.painCode({ topic: 'Розбір процесу · tasks_lost_in_chats · фото' }), 'B3');
+  assert.strictEqual(pains.painCode({ topic: 'Розбір процесу · zamovlennya_v_excel_ · фото' }), 'O1');
+  assert.strictEqual(pains.painCode({ topic: 'Розбір процесу · A2 · фото' }), 'A2');
   await db.audience.create({ data: { projectId: project.id, name: 'Дмитро', targeting: {} } });
   const r = await fetch(`http://127.0.0.1:${srv.address().port}/api/map/creatives`).then((x) => x.json());
   const g = r.data.groups;

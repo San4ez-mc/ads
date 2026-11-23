@@ -11,12 +11,16 @@ const PAINS = {
   D1: { title: 'Усі пробують ШІ, а з чого почати — незрозуміло', persona: 'Сашко' },
   D3: { title: 'Автоматизацію запускали, а вона не прижилась', persona: 'Руслан' },
   // Болі, на які креативів ще нема (план маркетолога): на карті стоять порожніми блоками з кнопкою «Замовити».
-  E1: { title: 'Замовлення з сайту в CRM і на склад переносять руками', persona: 'Ірина', planned: true },
-  E2: { title: 'Ціни конкурентів дивляться очима раз на тиждень', persona: 'Ірина', planned: true },
-  E3: { title: 'Звіти щотижня збирають руками з кількох місць', persona: 'Тетяна', planned: true },
-  E4: { title: 'Втратили заявку чи документ — клієнт пішов', persona: 'Максим', planned: true },
-  E5: { title: 'Найняли ще одну людину на рутину, яку можна автоматизувати', persona: 'Максим', planned: true },
-  E6: { title: 'Підрядник зробив, а як це підтримувати — незрозуміло', persona: 'Руслан', planned: true },
+  // Реальний біль із розмов Дена (23.11): замовлення живуть в Excel, Viber і дзвінках, водій/склад не бачать змін (6 із ~11 справжніх діалогів).
+  O1: { title: 'Замовлення в Excel, Viber і по телефону: водій не бачить, склад не знає', persona: 'Максим' },
+  // Коди збігаються з документом content2/документація/реклама-болі-ЦА-розбір-процесу.md (F1, F2 — наші нові, у документі їх нема).
+  A3: { title: 'Звіти щотижня збирають руками з кількох місць', persona: 'Тетяна', planned: true },
+  A6: { title: 'Ціни конкурентів дивляться очима', persona: 'Ірина', planned: true },
+  B2: { title: 'CRM і склад не знають одне про одного', persona: 'Ірина', planned: true },
+  B3: { title: 'Задачі ставлять у чаті й губляться, ніхто не контролює', persona: 'Максим' },
+  D4: { title: 'Підрядник зробив, а команда цим не користується', persona: 'Руслан', planned: true },
+  F1: { title: 'Втратили заявку чи документ — клієнт пішов', persona: 'Максим', planned: true },
+  F2: { title: 'Найняли ще одну людину на рутину, яку можна автоматизувати', persona: 'Максим', planned: true },
 };
 
 // Для креативів без коду в темі: перший збіг виграє.
@@ -29,9 +33,13 @@ const KEYWORDS = [
   [/менеджер\w* (?:витрачає|може|виконувати)|трьох менеджер|рутин/i, 'A1'],
 ];
 
+// Воронка рекламних фото-креативів кладе в тему короткий ключ болю («· tasks_lost_in_chats ·»): відповідність болям документа.
+const SLUGS = { tasks_lost_in_chats: 'B3', manual_routine_daily: 'A1', documents_manual_20m: 'A2', tried_automation_did: 'D3', dont_know_where_to_s: 'D1', business_depends_on_: 'C1', no_control_over_orde: 'O1', zamovlennya_v_excel_: 'O1' };
+
 function painCode(c) {
-  const m = /·\s*([A-D]\d)\b/.exec(String(c.topic || ''));
+  const m = /·\s*([A-F]\d|[a-z_]{8,})\s*(?:·|$)/.exec(String(c.topic || ''));
   if (m && PAINS[m[1]]) return m[1];
+  if (m && SLUGS[m[1]]) return SLUGS[m[1]];
   const text = `${c.hook || ''}\n${c.text || ''}`;
   for (const [re, code] of KEYWORDS) if (re.test(text)) return code;
   return null;

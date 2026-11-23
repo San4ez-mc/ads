@@ -83,6 +83,7 @@ router.get('/map/creatives', asyncHandler(async (req, res) => {
   for (const [code, p] of Object.entries(PAINS)) {
     if (!p.planned) continue;
     const key = `${p.persona}|${code}`;
+    if (groups.has(key)) continue; // на цей біль креативи вже є
     const aud = audByName.get(p.persona.trim().toLowerCase());
     groups.set(key, { audience: { id: aud ? aud.id : null, name: p.persona }, pain: { code, title: p.title, planned: true, orderNote: `Біль: «${p.title}». Аудиторія: ${p.persona}. Креативів на цей біль ще нема.` }, creatives: [] });
   }
