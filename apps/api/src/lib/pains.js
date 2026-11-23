@@ -37,7 +37,7 @@ const KEYWORDS = [
 const SLUGS = { tasks_lost_in_chats: 'B3', manual_routine_daily: 'A1', documents_manual_20m: 'A2', tried_automation_did: 'D3', dont_know_where_to_s: 'D1', business_depends_on_: 'C1', no_control_over_orde: 'O1', zamovlennya_v_excel_: 'O1' };
 
 function painCode(c) {
-  const m = /·\s*([A-F]\d|[a-z_]{8,})\s*(?:·|$)/.exec(String(c.topic || ''));
+  const m = /·\s*([A-F]\d|[a-z0-9_]{8,})\s*(?:·|$)/.exec(String(c.topic || ''));
   if (m && PAINS[m[1]]) return m[1];
   if (m && SLUGS[m[1]]) return SLUGS[m[1]];
   const text = `${c.hook || ''}\n${c.text || ''}`;

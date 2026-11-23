@@ -84,6 +84,7 @@ test('карта креативів: групи за аудиторією й б�
   assert.strictEqual(pains.painCode({ text: 'щось зовсім інше' }), null);
   assert.strictEqual(pains.painCode({ topic: 'Розбір процесу · tasks_lost_in_chats · фото' }), 'B3');
   assert.strictEqual(pains.painCode({ topic: 'Розбір процесу · zamovlennya_v_excel_ · фото' }), 'O1');
+  assert.strictEqual(pains.painCode({ topic: 'Розбір процесу · documents_manual_20m · фото' }), 'A2');
   assert.strictEqual(pains.painCode({ topic: 'Розбір процесу · A2 · фото' }), 'A2');
   await db.audience.create({ data: { projectId: project.id, name: 'Дмитро', targeting: {} } });
   const r = await fetch(`http://127.0.0.1:${srv.address().port}/api/map/creatives`).then((x) => x.json());
