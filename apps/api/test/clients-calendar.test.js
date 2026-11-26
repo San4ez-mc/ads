@@ -81,7 +81,7 @@ test('клієнт з Instagram: етапи повідомлень стають 
   assert.strictEqual((await call('POST', '/api/clients', { label: '  ' })).status, 400, 'порожній підпис не приймається');
 });
 
-test('продаж далі: подія з сумою й оголошенням, консультація стає «була», дохід окремо від ціни продажу', async () => {
+test('продаж далі: подія з сумою й оголошенням, консультація стає «була», хто заплатив лише за дорожчий продукт, теж клієнт', async () => {
   const c = await call('POST', '/api/clients', { label: 'Клієнт А', source: 'manual', adExtId: 'x1' });
   const id = c.json.data.id;
   assert.strictEqual((await call('POST', `/api/clients/${id}/sales`, { product: 'Супровід', amount: 0 })).status, 400);
@@ -95,8 +95,8 @@ test('продаж далі: подія з сумою й оголошенням,
   const a = rows.find((r) => r.externalId === 'x1');
   assert.strictEqual(a.upsellRevenue, 15000);
   assert.strictEqual(a.upsellCount, 1);
-  assert.strictEqual(a.sales, 1, 'продаж далі не рахується як ще один продаж: ціна продажу лишається чесною (лише 1 оплата сайту)');
-  assert.strictEqual(a.saleCost, 400);
+  assert.strictEqual(a.sales, 2, 'двоє різних людей заплатили: одна на сайті, друга одразу за дорожчий продукт');
+  assert.strictEqual(a.saleCost, 200);
   const del = await call('DELETE', `/api/clients/${id}/sales/${s.json.data.id}`);
   assert.strictEqual(del.status, 200);
   assert.strictEqual((await events({ elementType: 'manual', stepKey: 'upsell' })).length, 0, 'прибрали продаж — зникла й подія');
@@ -117,6 +117,8 @@ test('оплати без клієнта: оплата з сайту → клі�
   await call('POST', `/api/clients/${cl.id}/sales`, { product: 'Консультація 2', amount: 2000 });
   const up = (await events({ stepKey: 'upsell' }))[0];
   assert.strictEqual(up.personKey, 'v-pay1', 'продаж далі привʼязаний до тієї ж людини, що й оплата');
+  const x1 = (await adRows(project, period({ from: today, to: today }), {})).find((r) => r.externalId === 'x1');
+  assert.strictEqual(x1.sales, 1, 'дві оплати однієї людини — один клієнт');
 });
 
 test('видалення клієнта прибирає його події; чужі події не чіпає', async () => {

@@ -8,4 +8,10 @@ async function saleSteps(projectId) {
   return { has: (type, ref, key) => (m.size ? m.has(`${type}:${ref}|${key}`) : key === 'pay_success'), amountOf: (type, ref, key, people, sum) => { const d = m.get(`${type}:${ref}|${key}`); return Number(sum) > 0 ? Number(sum) : (d && d.amount ? d.amount * people : 0); } };
 }
 
-module.exports = { saleSteps };
+// ПРАВИЛО ВЛАСНИКА (26.11): переможця визначає ціна КЛІЄНТА, а не дешевих заходів. Клієнт = людина, яка заплатила:
+// крок-продаж або дорожчий продукт. Та сама людина рахується один раз, скільки б разів і де б не платила.
+const isPayment = (sale, e) => sale.has(e.elementType, e.elementRef, e.stepKey) || (e.elementType === 'manual' && e.stepKey === 'upsell');
+const payer = (e) => e.personKey || e.sourceId;
+const countClients = (sale, events) => new Set(events.filter((e) => isPayment(sale, e)).map(payer)).size;
+
+module.exports = { saleSteps, isPayment, countClients };

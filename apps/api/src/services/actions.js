@@ -162,10 +162,10 @@ function tagLink(link, adId) {
 async function salesEvidence(project, adExtIds) {
   if (!adExtIds.length) return { sales: 0, spend: 0 };
   const from = new Date(Date.now() - 14 * DAY);
-  const { saleSteps } = require('../lib/sales');
+  const { saleSteps, countClients } = require('../lib/sales');
   const sale = await saleSteps(project.id);
-  const events = await db.stepEvent.groupBy({ by: ['elementType', 'elementRef', 'stepKey'], where: { projectId: project.id, isTest: false, adExtId: { in: adExtIds }, ts: { gte: from } }, _count: { _all: true } });
-  const sales = events.filter((e) => sale.has(e.elementType, e.elementRef, e.stepKey)).reduce((a, e) => a + e._count._all, 0);
+  const events = await db.stepEvent.findMany({ where: { projectId: project.id, isTest: false, adExtId: { in: adExtIds }, ts: { gte: from } }, select: { elementType: true, elementRef: true, stepKey: true, personKey: true, sourceId: true } });
+  const sales = countClients(sale, events);
   const ads = await db.ad.findMany({ where: { projectId: project.id, externalId: { in: adExtIds } }, select: { id: true } });
   const sums = await db.insightDaily.groupBy({ by: ['currency'], where: { adId: { in: ads.map((a) => a.id) }, date: { gte: new Date(`${from.toISOString().slice(0, 10)}T00:00:00Z`) } }, _sum: { spend: true } });
   return { sales, spend: sums.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, project), 0) };

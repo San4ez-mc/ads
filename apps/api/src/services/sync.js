@@ -83,8 +83,9 @@ async function syncSiteEvents(conn) {
     const sites = await site.fetchSites(conn.externalId, key).catch(() => []);
     for (const s of sites) {
       const el = await db.element.upsert({ where: { projectId_type_ref: { projectId: conn.projectId, type: 'site', ref: String(s.id) } }, update: { name: s.name || s.domain || String(s.id), config: { domain: s.domain, variants: s.variants || [] } }, create: { projectId: conn.projectId, type: 'site', ref: String(s.id), name: s.name || s.domain || String(s.id), config: { domain: s.domain, variants: s.variants || [] } } });
+      // Продаж із сайту — лише оплата. Заявка чи завантаження, навіть позначені сайтом як продаж, клієнтами не рахуються.
       for (const st of s.steps || []) {
-        const data = { title: st.title || st.key, order: Number(st.order) || 0, branch: st.branch || null, isSale: !!st.is_sale, leadsTo: st.leads_to || null };
+        const data = { title: st.title || st.key, order: Number(st.order) || 0, branch: st.branch || null, isSale: !!st.is_sale && String(st.key) === 'pay_success', leadsTo: st.leads_to || null };
         await db.step.upsert({ where: { elementId_key: { elementId: el.id, key: String(st.key) } }, update: data, create: { ...data, elementId: el.id, key: String(st.key) } });
       }
     }

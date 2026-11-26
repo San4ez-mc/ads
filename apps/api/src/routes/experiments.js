@@ -7,6 +7,7 @@ const { NotFoundError, ValidationError, ConflictError } = require('@ads/errors')
 const asyncHandler = require('../middleware/asyncHandler');
 const { logAction } = require('../services/journal');
 const { toUah, round2 } = require('../lib/money');
+const { saleSteps, isPayment, countClients } = require('../lib/sales');
 
 const router = express.Router();
 const STATUSES = ['planned', 'running', 'won', 'lost', 'stopped'];
@@ -38,15 +39,19 @@ async function measure(project, e) {
   const to = e.dateTo || date(new Date().toISOString().slice(0, 10));
   const [sums, events, elements] = await Promise.all([
     db.insightDaily.groupBy({ by: ['currency'], where: { date: { gte: e.dateFrom, lte: to }, ad: { projectId: project.id, externalId: { in: ids } } }, _sum: { spend: true, impressions: true, linkClicks: true } }),
-    db.stepEvent.findMany({ where: { projectId: project.id, isTest: false, adExtId: { in: ids }, ts: { gte: e.dateFrom, lt: new Date(to.getTime() + 86400000) } }, select: { elementType: true, elementRef: true, stepKey: true, personKey: true, sourceId: true } }),
+    db.stepEvent.findMany({ where: { projectId: project.id, isTest: false, adExtId: { in: ids }, ts: { gte: e.dateFrom, lt: new Date(to.getTime() + 86400000) } }, select: { elementType: true, elementRef: true, stepKey: true, personKey: true, sourceId: true, amount: true } }),
     db.element.findMany({ where: { projectId: project.id }, include: { steps: true } }),
   ]);
   const people = new Map();
   for (const x of events) { const k = `${x.elementType}:${x.elementRef}|${x.stepKey}`; if (!people.has(k)) people.set(k, new Set()); people.get(k).add(x.personKey || x.sourceId); }
   const steps = [];
   for (const el of elements) for (const s of [...el.steps].sort((a, b) => a.order - b.order)) { const set = people.get(`${el.type}:${el.ref}|${s.key}`); if (set) steps.push({ element: el.name, title: s.title, people: set.size }); }
+  const spend = round2(sums.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, project), 0));
+  const sale = await saleSteps(project.id);
+  const clients = countClients(sale, events);
+  const revenue = round2(events.filter((x) => isPayment(sale, x)).reduce((a, x) => a + sale.amountOf(x.elementType, x.elementRef, x.stepKey, 1, x.amount), 0));
   return {
-    spend: round2(sums.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, project), 0)),
+    spend, clients, clientCost: clients ? round2(spend / clients) : null, revenue,
     impressions: sums.reduce((a, r) => a + (r._sum.impressions || 0), 0), linkClicks: sums.reduce((a, r) => a + (r._sum.linkClicks || 0), 0), steps,
   };
 }

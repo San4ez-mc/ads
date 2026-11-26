@@ -93,6 +93,7 @@ function Card({ x, parent, canEdit, onEdit, onCopy, reload }) {
       </dl>
       {r && (
         <div className="rounded-lg bg-slate-950/60 p-3 space-y-2">
+          {r.clients !== undefined && <div className="text-base">{r.clients ? <>Ціна клієнта <b>{fmt.money(r.clientCost)}</b> · клієнтів {fmt.int(r.clients)} · дохід {fmt.money(r.revenue)}</> : <span className="text-slate-400">Клієнтів ще нема: переможця визначати рано</span>}</div>}
           <div className="text-sm">Витрачено <b>{fmt.money(r.spend)}</b> · покази {fmt.int(r.impressions)} · переходи {fmt.int(r.linkClicks)}{r.linkClicks ? ` · ${fmt.money2(r.spend / r.linkClicks)} за перехід` : ''}</div>
           {r.steps?.length > 0 && <div className="flex flex-wrap gap-2">{r.steps.map((s) => <div key={`${s.element}|${s.title}`} className="rounded-md border border-slate-800 px-2 py-1 text-xs"><span className="text-slate-500">{s.element}: </span>{s.title} <b>{fmt.int(s.people)}</b>{s.people ? <span className="text-slate-500"> · {fmt.money(r.spend / s.people)}</span> : null}</div>)}</div>}
           {r.note && <div className="text-xs text-slate-400">{r.note}</div>}

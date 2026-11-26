@@ -63,7 +63,7 @@ function buildAdvice(map, ctx) {
   // Усе крутиться без жодного продажу довго, а бюджет малий: сказати чесно, що вирішувати рано.
   if (target && ads.length && !items.some((i) => i.kind === 'pause' || i.kind === 'scale')) {
     const spent = ads.reduce((s, a) => s + a.spend, 0); const sales = ads.reduce((s, a) => s + a.sales, 0);
-    if (spent > 0 && spent < target * 2 && sales === 0) add({ kind: 'few_data', severity: 'info', title: 'Даних ще мало для рішень', text: `Витрачено ${grn(spent)} — менше двох цільових цін (${grn(target * 2)}). Нічого не вимикайте: дивіться на ціну заходу і частку тих, хто дійшов до пропозиції.`, preliminary: true });
+    if (spent > 0 && spent < target * 2 && sales === 0) add({ kind: 'few_data', severity: 'info', title: 'Даних ще мало для рішень', text: `Витрачено ${grn(spent)} — менше двох цільових цін (${grn(target * 2)}). Нічого не вимикайте: переможця визначає ціна клієнта, а не дешеві заходи. Дивіться, чи люди доходять до пропозиції й оплати.`, preliminary: true });
   }
 
   const order = (i) => SEV[i.severity] ?? 0;
@@ -75,8 +75,8 @@ function buildAdvice(map, ctx) {
 function dailyReportText(project, day, totals, advice, bundles) {
   const lines = [];
   lines.push(`<b>${escapeHtml(project.name)}</b> · ${escapeHtml(day)}`);
-  lines.push(`Витрачено <b>${grn(totals.spend)}</b> · переходи ${totals.linkClicks} · продажі <b>${totals.sales}</b>${totals.sales ? ` на ${grn(totals.revenue)}` : ''}`);
-  lines.push(totals.saleCost ? `Ціна продажу <b>${grn(totals.saleCost)}</b>${totals.target ? ` (ціль ${grn(totals.target)})` : ''}` : `Ціна продажу — ще нема продажів${totals.target ? ` (ціль ${grn(totals.target)})` : ''}`);
+  lines.push(`Витрачено <b>${grn(totals.spend)}</b> · переходи ${totals.linkClicks} · клієнти <b>${totals.sales}</b>${totals.sales ? ` на ${grn(totals.revenue)}` : ''}`);
+  lines.push(totals.saleCost ? `Ціна клієнта <b>${grn(totals.saleCost)}</b>${totals.target ? ` (ціль ${grn(totals.target)})` : ''}` : `Ціна клієнта — ще нема клієнтів${totals.target ? ` (ціль ${grn(totals.target)})` : ''}`);
   if (totals.upsellCount) lines.push(`Продажі далі (дорожчі продукти): ${totals.upsellCount} на ${grn(totals.upsellRevenue)}`);
   if (totals.todayLimit) lines.push(`Сьогодні: ${grn(totals.todaySpend)} з ліміту ${grn(totals.todayLimit)}`);
   const live = (bundles || []).filter((b) => ['test', 'works', 'scale'].includes(b.status));

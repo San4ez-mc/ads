@@ -6,7 +6,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { runProjectSync } = require('../services/sync');
 const { logAction } = require('../services/journal');
 const { toUah, round2 } = require('../lib/money');
-const { saleSteps } = require('../lib/sales');
+const { saleSteps, isPayment, countClients } = require('../lib/sales');
 const describe = require('../lib/describe');
 
 const router = express.Router();
@@ -42,9 +42,13 @@ async function adRows(project, p, { onlyActive } = {}) {
     const cur = byExt.get(s.adExtId) || { steps: {}, sales: 0, revenue: 0, upsellRevenue: 0, upsellCount: 0 };
     if (s.elementType === 'manual' && s.stepKey === 'upsell') { cur.upsellRevenue += Number(s._sum.amount || 0); cur.upsellCount += s._count._all; }
     cur.steps[s.stepKey] = (cur.steps[s.stepKey] || 0) + s._count._all;
-    if (sale.has(s.elementType, s.elementRef, s.stepKey)) { cur.sales += s._count._all; cur.revenue += sale.amountOf(s.elementType, s.elementRef, s.stepKey, s._count._all, s._sum.amount); }
+    if (sale.has(s.elementType, s.elementRef, s.stepKey)) cur.revenue += sale.amountOf(s.elementType, s.elementRef, s.stepKey, s._count._all, s._sum.amount);
     byExt.set(s.adExtId, cur);
   }
+  // sales = клієнти (люди, які заплатили), а не кількість подій: оплат мало, тож читаємо їх поіменно ключами.
+  const payKeys = [...new Set(steps.filter((s) => isPayment(sale, s)).map((s) => s.stepKey))];
+  const paid = payKeys.length ? await db.stepEvent.findMany({ where: { projectId: project.id, isTest: false, adExtId: { not: null }, stepKey: { in: payKeys }, ts: { gte: p.gte, lt: new Date(p.lte.getTime() + 86400000) } }, select: { adExtId: true, personKey: true, sourceId: true, stepKey: true, elementType: true, elementRef: true } }) : [];
+  for (const [adExtId, f] of byExt) f.sales = countClients(sale, paid.filter((e) => e.adExtId === adExtId));
   return ads.map((a) => {
     const m = byAd.get(a.id) || { spendUah: 0, impressions: 0, clicks: 0, linkClicks: 0 };
     const f = byExt.get(a.externalId) || { steps: {}, sales: 0, revenue: 0, upsellRevenue: 0, upsellCount: 0 };
