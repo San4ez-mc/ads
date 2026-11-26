@@ -21,6 +21,8 @@ const RULES = [
   [(m, p) => m !== 'GET' && /^\/(bundles|audiences|elements)(\/|$)/.test(p), ['bundles']],
   [(m, p) => /^\/creatives(\/|$)/.test(p), ['creatives']],
   [(m, p) => /^\/actions(\/|$)/.test(p), ['approve']],
+  [(m, p) => m === 'GET' && /^\/launches(\/|$)/.test(p), ['ads', 'approve']],
+  [(m, p) => /^\/launches(\/|$)/.test(p), ['approve']],
   [(m, p) => /^\/clients(\/|$)/.test(p), ['clients']],
 ];
 

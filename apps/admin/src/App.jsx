@@ -13,6 +13,7 @@ import ClientsPage from './pages/ClientsPage';
 import ConnectionsPage from './pages/ConnectionsPage';
 import JournalPage from './pages/JournalPage';
 import SettingsPage from './pages/SettingsPage';
+import LaunchPage from './pages/LaunchPage';
 
 function ProtectedShell({ children }) {
   const { isLoading, isAuthenticated, projects } = useAuthStore();
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/creatives" element={<CreativesPage />} />
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/bundles" element={<BundlesPage />} />
+            <Route path="/launch" element={<LaunchPage />} />
             <Route path="/ads" element={<AdsPage />} />
             <Route path="/connections" element={<ConnectionsPage />} />
             <Route path="/journal" element={<JournalPage />} />

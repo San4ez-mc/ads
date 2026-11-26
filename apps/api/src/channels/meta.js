@@ -1,9 +1,9 @@
 // Канал Meta (Facebook/Instagram) — ЛИШЕ офіційний Marketing API (запобіжник 1).
-// У цьому файлі тільки читання. Дії (увімкнути, вимкнути, бюджет, створити) з'являться окремим модулем
-// і підуть через запобіжники; тут їх свідомо немає.
+// Читання — вільно. Функції запису й створення внизу файлу викликаються ЛИШЕ зі services/actions.js та
+// services/launch.js, де стоять запобіжники; маршрути напряму їх не викликають.
 const { scrub } = require('../lib/secrets');
 
-const VERSION = process.env.META_API_VERSION || 'v21.0';
+const VERSION = process.env.META_API_VERSION || 'v26.0';
 const BASE = `https://graph.facebook.com/${VERSION}`;
 const PAGE_CAP = 60; // стеля сторінок на один запит-список: захист від нескінченного гортання
 
@@ -123,4 +123,41 @@ const setStatus = (token, objectId, status) => write(token, objectId, { status }
 /** amount — у звичайних одиницях валюти кабінету; Meta чекає найменші одиниці (центи/копійки). */
 const setDailyBudget = (token, adSetId, amount) => write(token, adSetId, { daily_budget: Math.round(Number(amount) * 100) });
 
-module.exports = { check, fetchStructure, fetchInsights, setStatus, setDailyBudget, readBack, MetaError, VERSION };
+// ── СТВОРЕННЯ. Викликати ЛИШЕ з services/launch.js після запобіжників. Усе нове створюється вимкненим (запобіжник 3). ──
+
+/** POST на «ребро» кабінету або на об'єкт. Обʼєкти передаються як JSON; ключ — у заголовку. */
+async function post(token, path, fields) {
+  const body = new URLSearchParams(Object.entries(fields).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)]));
+  const res = await fetch(`${BASE}/${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(90_000) }).catch((e) => { throw new MetaError(`Meta недоступна: ${e.message}`); });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json || json.error) {
+    const e = json?.error || {};
+    throw new MetaError(e.error_user_msg || e.message || `Meta HTTP ${res.status}`, { code: e.code, subcode: e.error_subcode, status: res.status, rateLimited: RATE_CODES.has(e.code) || res.status === 429 });
+  }
+  return json;
+}
+
+const newId = (json) => { if (!json?.id) throw new MetaError('Meta не повернула номер створеного обʼєкта'); return String(json.id); };
+
+const createCampaign = async (token, accountId, fields) => newId(await post(token, `${actId(accountId)}/campaigns`, { ...fields, status: 'PAUSED' }));
+const createAdSet = async (token, accountId, fields) => newId(await post(token, `${actId(accountId)}/adsets`, { ...fields, status: 'PAUSED' }));
+const createCreative = async (token, accountId, fields) => newId(await post(token, `${actId(accountId)}/adcreatives`, fields));
+const createAd = async (token, accountId, fields) => newId(await post(token, `${actId(accountId)}/ads`, { ...fields, status: 'PAUSED' }));
+const setAdCreative = (token, adId, creativeId) => write(token, adId, { creative: JSON.stringify({ creative_id: creativeId }) });
+
+/** Картинка (байти) → hash, на який посилається креатив. */
+async function uploadImage(token, accountId, buffer) {
+  const json = await post(token, `${actId(accountId)}/adimages`, { bytes: buffer.toString('base64') });
+  const hash = Object.values(json.images || {})[0]?.hash;
+  if (!hash) throw new MetaError('Meta не прийняла картинку');
+  return hash;
+}
+
+/** Відео Meta забирає сама за адресою; готовність перевіряється окремо через videoState. */
+const uploadVideo = async (token, accountId, fileUrl, name) => newId(await post(token, `${actId(accountId)}/advideos`, { file_url: fileUrl, name }));
+const videoState = async (token, videoId) => { const v = await call(token, String(videoId), { fields: 'status,picture' }); return { state: v.status?.video_status || 'processing', picture: v.picture || null }; };
+
+/** Facebook-сторінки, доступні ключу (щоб не вводити номер вручну). */
+const pages = async (token) => (await list(token, 'me/accounts', { fields: 'id,name', limit: 100 })).map((p) => ({ id: p.id, name: p.name }));
+
+module.exports = { check, fetchStructure, fetchInsights, setStatus, setDailyBudget, readBack, createCampaign, createAdSet, createCreative, createAd, setAdCreative, uploadImage, uploadVideo, videoState, pages, MetaError, VERSION };

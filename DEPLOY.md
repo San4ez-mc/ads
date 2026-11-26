@@ -28,7 +28,7 @@ SSO_REDIRECT_URI=https://ads.fineko.space/auth/callback
 ADMIN_BASE_URL=https://ads.fineko.space
 ALLOWED_ORIGINS=https://ads.fineko.space
 ADS_SECRET_KEY=<openssl rand -hex 32>   # ЗБЕРЕГТИ ОКРЕМО: без нього збережені ключі кабінетів не розшифрувати
-META_API_VERSION=v21.0
+META_API_VERSION=v26.0
 ```
 Далі: `bash deploy.sh`, потім `node scripts/seed-fineko.js` (проєкт FINEKO, 3 аудиторії, шлях, 8 зв'язок-чернеток; повторний запуск безпечний).
 

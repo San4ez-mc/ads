@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, fmt } from '../api/client';
 
-const KIND = { project_created: 'Створено проєкт', project_settings: 'Змінено налаштування', project_key_rotated: 'Замінено ключ проєкту', connection_added: 'Додано підключення', connection_changed: 'Змінено підключення', connection_removed: 'Видалено підключення', sync_run: 'Оновлення даних' };
+const KIND = { project_created: 'Створено проєкт', project_settings: 'Змінено налаштування', project_key_rotated: 'Замінено ключ проєкту', connection_added: 'Додано підключення', connection_changed: 'Змінено підключення', connection_removed: 'Видалено підключення', sync_run: 'Оновлення даних', launch_draft: 'Чернетка кампанії', launch_create: 'Створення кампанії', launch_start: 'Увімкнення показу', launch_stop: 'Зупинка кампанії', launch_deleted: 'Прибрано зі списку' };
+const STATE = { dry_run: 'проба', blocked: 'заблоковано', failed: 'не вдалося' };
 const who = (a) => (a.startsWith('user') ? 'Людина' : a === 'flows' ? 'Воронка Flows' : a === 'ai' ? 'ШІ' : a.startsWith('rule') ? 'Правило' : a);
 
 const FIELD = { name: 'назва', dailyLimitUsd: 'денний ліміт, дол.', usdRate: 'курс долара', autonomyLevel: 'рівень самостійності', dryRun: 'режим «проба»', targetSaleCost: 'цільова ціна продажу', reportChatId: 'чат для звітів', timezone: 'часовий пояс', content2ProjectId: 'проєкт контент-платформи' };
@@ -13,7 +14,7 @@ function detail(a) {
     const ch = Object.keys(a.after).filter((k) => JSON.stringify(a.after[k]) !== JSON.stringify(a.before[k]));
     return ch.length ? ch.map((k) => `${FIELD[k] || k}: ${show(a.before[k])} → ${show(a.after[k])}`).join(' · ') : 'без змін';
   }
-  return a.target || a.after?.name || '—';
+  return [a.target || a.after?.name, a.status !== 'done' && a.reason].filter(Boolean).join(' · ') || '—';
 }
 
 export default function JournalPage() {
@@ -33,7 +34,7 @@ export default function JournalPage() {
                 <tr key={a.id} className="border-t border-slate-800 align-top">
                   <td className="px-4 py-2 whitespace-nowrap text-slate-400">{fmt.dt(a.createdAt)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{who(a.actor)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{KIND[a.kind] || a.kind}{a.status !== 'done' ? ` (${a.status})` : ''}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{KIND[a.kind] || a.kind}{a.status !== 'done' ? ` (${STATE[a.status] || a.status})` : ''}</td>
                   <td className="px-4 py-2 text-slate-400 break-words">{detail(a)}</td>
                 </tr>
               ))}

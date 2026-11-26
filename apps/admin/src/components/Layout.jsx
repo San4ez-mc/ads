@@ -8,6 +8,7 @@ const NAV = [
   { to: '/clients', label: 'Клієнти', page: 'clients' },
   { to: '/creatives', label: 'Креативи', page: 'creatives' },
   { to: '/bundles', label: "Зв'язки", page: 'bundles' },
+  { to: '/launch', label: 'Запуск', page: 'ads' },
   { to: '/ads', label: 'Оголошення', page: 'ads' },
   { to: '/connections', label: 'Підключення', page: 'connections' },
   { to: '/journal', label: 'Журнал', page: 'journal' },

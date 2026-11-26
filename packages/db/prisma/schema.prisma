@@ -45,6 +45,7 @@ model Project {
   actions     ActionLog[]
   syncRuns    SyncRun[]
   adviceLogs  AdviceLog[]
+  launches    Launch[]
 
   @@map("projects")
 }
@@ -436,4 +437,29 @@ model AdviceLog {
   @@index([projectId, createdAt])
   @@index([projectId, key])
   @@map("advice_log")
+}
+
+// Кампанія, яку створює сама платформа: опис із форми і номери вже створених у кабінеті обʼєктів.
+model Launch {
+  id              String    @id @default(cuid())
+  projectId       String    @map("project_id")
+  connectionId    String    @map("connection_id")
+  name            String
+  /// draft | creating | created (вимкнена) | live | stopped | failed
+  status          String    @default("draft")
+  spec            Json
+  /// {campaign, adSet, items: {creativeId: {media, creative, ad, finalCreative, linked}}} — щоб повтор не створював дублів.
+  ids             Json      @default("{}")
+  error           String?   @db.Text
+  createdBy       String?   @map("created_by")
+  /// Коли створено кампанію в кабінеті (запобіжник 5: кількість за добу).
+  createdInMetaAt DateTime? @map("created_in_meta_at")
+  launchedAt      DateTime? @map("launched_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("launches")
 }
