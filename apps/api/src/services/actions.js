@@ -1,5 +1,6 @@
 // Дії в рекламному кабінеті. УСЯ зміна проходить через цю точку: людина, правило чи ШІ — запобіжники однакові й обійти їх не можна.
 // Запобіжники з розділу 5 проєкту (номери в дужках). Дві дії: вимкнути/увімкнути оголошення, змінити денний бюджет групи.
+// ПРАВИЛА META обовʼязкові: новий текст і посилання проходять lib/metaPolicy.js, обхідного шляху нема.
 // Порядок: перевірка → (проба? тоді лише запис у журнал) → виклик Meta → перечитування з кабінету → журнал до/після.
 const { db } = require('@ads/db');
 const meta = require('../channels/meta');
@@ -8,6 +9,7 @@ const { logAction } = require('./journal');
 const { toUah, round2 } = require('../lib/money');
 const launch = require('./launch');
 const { PLATFORM } = require('../lib/describe');
+const policy = require('../lib/metaPolicy');
 
 const KINDS = ['pause_ad', 'resume_ad', 'set_adset_budget', 'set_placements', 'replace_creative', 'add_ad'];
 const ON_ADSET = ['set_adset_budget', 'set_placements', 'add_ad']; // дії над групою; решта — над оголошенням
@@ -59,6 +61,9 @@ async function check(project, input, { actor = 'user:' } = {}) {
   if (kind === 'resume_ad') {
     if (limit > 0 && spentToday >= limit) reasons.push(`(10) Денний ліміт вичерпано: витрачено ${money(spentToday)} з ${money(limit)}. Увімкнути можна завтра або після підняття ліміту власником`);
     if (ad.status === 'ACTIVE') notes.push('Оголошення вже активне');
+    // Увімкнення — теж зміна: відхилене Meta чи ризикованим текстом оголошення звідси не вмикається.
+    if (ad.effectiveStatus === 'DISAPPROVED') reasons.push('(6) Meta відхилила це оголошення: спершу виправте причину');
+    if (ad.title || ad.body) for (const why of policy.checkAdText({ primary: ad.body, headline: ad.title })) reasons.push(`(Meta) ${why}`);
   }
 
   if (kind === 'set_adset_budget') {
@@ -119,6 +124,7 @@ async function check(project, input, { actor = 'user:' } = {}) {
     if (!url || url.protocol !== 'https:') reasons.push('Вкажіть, куди веде оголошення: адресу https://… (для бота https://t.me/імʼя?start=воронка)');
     else if (/(^|\.)t\.me$/i.test(url.hostname) && !url.searchParams.get('start')) reasons.push('У посиланні на бота має бути ?start=код_воронки');
     if (!sibling && !defaults.pageId) reasons.push('Невідома Facebook-сторінка: створіть перше оголошення зі сторінки «Запуск»');
+    if (url) for (const why of await policy.checkDestination(url.toString(), { domains: await policy.projectDomains(db, project.id) })) reasons.push(`(Meta) ${why}`);
     if (url) { notes.push(`Нове оголошення буде вимкненим. Веде на ${url.origin}${url.pathname}`); place = { link: url.toString(), siblingAd: sibling?.externalId || null, pageId: defaults.pageId || null, instagramId: defaults.instagramId || null }; }
   }
 
@@ -139,6 +145,7 @@ async function checkCreative(project, creativeId, reasons, notes) {
     if (!media || !got.origins.includes(media.origin)) reasons.push(`Креатив №${c.number}: нема картинки з контент-платформи`);
     else if (c.mediaType !== 'image') reasons.push('Звідси можна лише картинку; з відео створюйте кампанію на сторінці «Запуск»');
     if (!text) return null;
+    for (const why of policy.checkAdText(text)) reasons.push(`(Meta) Креатив №${c.number}: ${why}`);
     notes.push(`Креатив №${c.number}: «${text.headline}»`);
     return { id: c.id, number: c.number, mediaUrl: c.mediaUrl, origins: got.origins, ...text };
   } catch (e) { reasons.push(`(4) Не вдалося перевірити креатив: ${scrub(e.message)}`); return null; }
@@ -199,7 +206,7 @@ async function perform(project, input, { actor }) {
   // (17) Перечитуємо з кабінету, чи зміна справді застосувалась.
   let applied = null; let confirmed = false;
   try {
-    const back = await meta.readBack(token, objectId);
+    const back = await (input.kind === 'set_adset_budget' ? meta.readBudget : meta.readBack)(token, objectId);
     applied = { status: back.status, effectiveStatus: back.effective_status, dailyBudget: back.daily_budget ? Number(back.daily_budget) / 100 : null };
     confirmed = input.kind === 'set_adset_budget' ? Math.abs((applied.dailyBudget ?? -1) - Number(input.dailyBudget)) < 0.01 : applied.status === after.status;
   } catch { /* зміна пройшла, але підтвердити не вдалось — скажемо про це чесно */ }

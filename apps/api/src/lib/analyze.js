@@ -3,6 +3,7 @@
 // Для реклами підказка може мати дію (її виконує платформа через запобіжники), для сайту й воронки — текст, який копіюють виконавцю.
 const { toUah } = require('./money');
 const { PLATFORM } = require('./describe');
+const { checkAdText } = require('./metaPolicy');
 
 const grn = (n) => `${Math.round(n).toLocaleString('uk-UA')} грн`;
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
@@ -19,6 +20,9 @@ function analyze(map, rows, ctx = {}) {
   for (const r of rows || []) { if (!byAd.has(r.adExternalId)) byAd.set(r.adExternalId, []); byAd.get(r.adExternalId).push({ ...r, uah: toUah(r.spend, r.currency, ctx.project) }); }
 
   for (const a of list) {
+    // Оголошення, зроблені прямо в кабінеті, платформа не перевіряла: показуємо ризики за правилами Meta.
+    const risks = a.creative.body || a.creative.title ? checkAdText({ primary: a.creative.body, headline: a.creative.title }) : [];
+    if (risks.length) add(ads, a.externalId, { severity: 'high', title: 'Ризик за правилами Meta', text: risks.join('; ') });
     const id = a.externalId; const platforms = byAd.get(id) || [];
     const total = platforms.reduce((s, p) => s + p.uah, 0);
     const clicks = platforms.reduce((s, p) => s + p.linkClicks, 0); const landed = platforms.reduce((s, p) => s + p.landingViews, 0);

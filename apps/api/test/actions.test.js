@@ -29,6 +29,8 @@ test.before(async () => {
       const p = new URLSearchParams(String(opts.body)); state[id] = { ...(state[id] || {}), ...(p.get('status') ? { status: p.get('status') } : {}), ...(p.get('daily_budget') ? { daily_budget: p.get('daily_budget') } : {}) };
       return json(200, { success: true });
     }
+    // Як справжня Meta: в оголошення (92…) нема поля бюджету.
+    if (id.startsWith('92') && String(u.searchParams.get('fields')).includes('daily_budget')) return json(400, { error: { message: '(#100) Tried accessing nonexisting field (daily_budget)', code: 100 } });
     if (breakReadBack) return json(200, { status: 'ACTIVE', effective_status: 'ACTIVE', daily_budget: '1000' });
     return json(200, { status: (state[id] || {}).status || 'ACTIVE', effective_status: (state[id] || {}).status || 'ACTIVE', daily_budget: (state[id] || {}).daily_budget || '1000' });
   };

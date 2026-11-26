@@ -5,6 +5,7 @@ const http = require('node:http');
 const path = require('node:path');
 require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
 
+process.env.META_POLICY_SKIP_REACH = '1';
 const { db } = require('@ads/db');
 const { encrypt } = require('../src/lib/secrets');
 const describe = require('../src/lib/describe');

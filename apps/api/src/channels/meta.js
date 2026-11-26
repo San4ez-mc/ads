@@ -130,7 +130,9 @@ async function write(token, objectId, fields) {
   return json;
 }
 
-const readBack = (token, objectId) => call(token, String(objectId), { fields: 'status,effective_status,daily_budget' });
+// Стан обʼєкта після зміни. Бюджет питаємо лише в групи: в оголошення такого поля нема, і Meta відповідає помилкою на весь запит.
+const readBack = (token, objectId) => call(token, String(objectId), { fields: 'status,effective_status' });
+const readBudget = (token, adSetId) => call(token, String(adSetId), { fields: 'status,effective_status,daily_budget' });
 const setStatus = (token, objectId, status) => write(token, objectId, { status });
 /** amount — у звичайних одиницях валюти кабінету; Meta чекає найменші одиниці (центи/копійки). */
 const setDailyBudget = (token, adSetId, amount) => write(token, adSetId, { daily_budget: Math.round(Number(amount) * 100) });
@@ -173,4 +175,4 @@ const videoState = async (token, videoId) => { const v = await call(token, Strin
 /** Facebook-сторінки, доступні ключу (щоб не вводити номер вручну). */
 const pages = async (token) => (await list(token, 'me/accounts', { fields: 'id,name', limit: 100 })).map((p) => ({ id: p.id, name: p.name }));
 
-module.exports = { check, fetchStructure, fetchInsights, setStatus, setDailyBudget, readBack, createCampaign, createAdSet, createCreative, createAd, setAdCreative, setTargeting, readTargeting, readAdCreative, fetchPlacements, uploadImage, uploadVideo, videoState, pages, MetaError, VERSION };
+module.exports = { check, fetchStructure, fetchInsights, setStatus, setDailyBudget, readBack, readBudget, createCampaign, createAdSet, createCreative, createAd, setAdCreative, setTargeting, readTargeting, readAdCreative, fetchPlacements, uploadImage, uploadVideo, videoState, pages, MetaError, VERSION };

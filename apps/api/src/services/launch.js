@@ -3,10 +3,12 @@
 // контент-платформі (4), не більше 3 кампаній і 10 оголошень на добу (5), стоп після двох відхилень (6), денний ліміт (10),
 // стан кабінету (13), без повторів при відмові (14), лише людина з підтвердженням (15), режим «проба» (16),
 // перечитування з кабінету (17), журнал (18).
+// ПРАВИЛА META обовʼязкові для всього, що йде в кабінет: тексти й посилання проходять lib/metaPolicy.js, обхідного шляху нема.
 const { db } = require('@ads/db');
 const logger = require('@ads/logger');
 const { ValidationError } = require('@ads/errors');
 const meta = require('../channels/meta');
+const policy = require('../lib/metaPolicy');
 const c2 = require('../channels/content2');
 const { decrypt, scrub } = require('../lib/secrets');
 const { toUah, round2 } = require('../lib/money');
@@ -169,9 +171,14 @@ async function check(project, launch, { actor = 'user:' } = {}) {
       if (!text) reasons.push(`${label}: не вдалося прочитати основний текст і заголовок`);
       let media = null; try { media = new URL(c.mediaUrl); } catch { /* нема файла */ }
       if (!media || !origins.includes(media.origin)) reasons.push(`${label}: нема картинки чи відео з контент-платформи`);
+      if (text) for (const why of policy.checkAdText(text)) reasons.push(`(Meta) ${label}: ${why}`);
       if (text) creatives.push({ id: c.id, number: c.number, mediaUrl: c.mediaUrl, mediaType: c.mediaType, ...text });
     }
   } catch (e) { reasons.push(`(4) Не вдалося перевірити креативи: ${scrub(e.message)}`); }
+
+  // Правила Meta: куди веде реклама.
+  const dest = spec.destination.type === 'telegram' ? `https://t.me/${spec.destination.bot}` : spec.destination.url;
+  for (const why of await policy.checkDestination(dest, { domains: await policy.projectDomains(db, project.id) })) reasons.push(`(Meta) ${why}`);
 
   // (5) Денна кількість нового. Ця ж кампанія при повторі вдруге не рахується.
   const dayStart = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
@@ -323,6 +330,19 @@ async function create(project, launch, { actor }) {
   return { status: 'creating', job };
 }
 
+/** Чинні тексти креативів запуску проти правил Meta. Не вдалося прочитати — не вмикаємо. */
+async function metaRuleReasons(project, launch) {
+  try {
+    const { creatives } = await contentCreatives(project);
+    return (launch.spec.creativeIds || []).flatMap((id) => {
+      const c = creatives.find((x) => x.id === id);
+      const text = c && parseCreativeText(c.text);
+      if (!text) return ['(Meta) Креатив кампанії не вдалося перевірити: його нема в контент-платформі або в ньому нема тексту'];
+      return [...(c.violations || []), ...policy.checkAdText(text)].map((why) => `(Meta) Креатив №${c.number}: ${why}`);
+    });
+  } catch (e) { return [`(Meta) Не вдалося перевірити креативи перед увімкненням: ${scrub(e.message)}`]; }
+}
+
 /** Увімкнути показ створеної кампанії. Окреме «так» людини (3, 15). */
 async function start(project, launch, { actor }) {
   const reasons = [];
@@ -337,6 +357,7 @@ async function start(project, launch, { actor }) {
     if (spent >= limit) reasons.push(`(10) Денний ліміт уже витрачено: ${round2(spent)} з ${round2(limit)} грн`);
     if (active + mine > limit + 0.001) reasons.push(`(10) Увімкнені кампанії вже можуть витрачати ${round2(active)} грн на добу, ця додасть ${round2(mine)} грн, а денний ліміт ${round2(limit)} грн`);
   }
+  for (const why of await metaRuleReasons(project, launch)) reasons.push(why);
   const ads = Object.values(launch.ids?.items || {}).map((i) => i.ad).filter(Boolean);
   let token = null;
   if (!reasons.length) {

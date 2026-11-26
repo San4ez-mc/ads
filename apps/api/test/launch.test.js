@@ -1,5 +1,6 @@
 // Створення і запуск кампанії на підробленій Meta і підробленій контент-платформі. Справжні сервіси не викликаються.
 process.env.META_VIDEO_POLL_MS = '1';
+process.env.META_POLICY_SKIP_REACH = '1';
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
@@ -48,6 +49,8 @@ test.before(async () => {
       objects[parts[0]] = { ...(objects[parts[0]] || {}), ...body }; return json(200, { success: true });
     }
     const obj = objects[parts[0]] || {};
+    // Як справжня Meta: в оголошення нема поля бюджету.
+    if (obj.edge === 'ads' && String(u.searchParams.get('fields')).includes('daily_budget')) return json(400, { error: { message: '(#100) Tried accessing nonexisting field (daily_budget)', code: 100 } });
     if (String(u.searchParams.get('fields')).includes('picture')) { videoPolls += 1; return json(200, { status: { video_status: videoPolls > 1 ? 'ready' : 'processing' }, picture: 'https://scontent.fbcdn.net/thumb.jpg' }); }
     return json(200, { status: obj.status || 'PAUSED', effective_status: disapproved && obj.edge === 'ads' ? 'DISAPPROVED' : obj.status || 'PAUSED' });
   };
