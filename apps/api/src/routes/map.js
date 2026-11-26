@@ -12,6 +12,7 @@ const { inBundle } = require('./bundles');
 const meta = require('../channels/meta');
 const { decrypt, scrub } = require('../lib/secrets');
 const { analyze } = require('../lib/analyze');
+const { rulesOf } = require('../lib/rules');
 const { library } = require('../services/library');
 
 const router = express.Router();
@@ -20,6 +21,7 @@ const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } 
 /** Дані карти як функція: їх же читають рекомендації й звіти. */
 async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
   const target = project.targetSaleCost === null ? null : Number(project.targetSaleCost);
+  const rules = rulesOf(project);
   const bundle = bundleId ? await db.bundle.findFirst({ where: { id: String(bundleId), projectId: project.id } }) : null;
   const [allRows, allElements, counts] = await Promise.all([
     adRows(project, p, { onlyActive: !all }),
@@ -73,11 +75,11 @@ async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
     if (!camps.has(a.campaign.id)) camps.set(a.campaign.id, { id: a.campaign.id, name: a.campaign.name, spend: 0, sales: 0, revenue: 0, adSets: new Map() });
     const c = camps.get(a.campaign.id);
     if (!c.adSets.has(a.adSet.id)) c.adSets.set(a.adSet.id, { ...a.adSet, ads: [] });
-    const v = verdict({ spend: a.spend, sales: a.sales, target });
+    const v = verdict({ spend: a.spend, sales: a.sales, target, rules });
     c.adSets.get(a.adSet.id).ads.push({ id: a.id, adSetId: a.adSet.id, adSetName: a.adSet.name, adSetBudget: a.adSet.dailyBudget, audience: a.adSet.audience, placements: a.adSet.placements, externalId: a.externalId, name: a.name, effectiveStatus: a.effectiveStatus, running: a.running, creative: a.creative, spend: a.spend, impressions: a.impressions, linkClicks: a.linkClicks, cpc: a.cpc, ctr: a.ctr, sales: a.sales, revenue: a.revenue, upsellRevenue: a.upsellRevenue, upsellCount: a.upsellCount, saleCost: a.saleCost, verdict: v, verdictLabel: LABEL[v], entry: entryOf(a) });
     c.spend += a.spend; c.sales += a.sales; c.revenue += a.revenue;
   }
-  const campaigns = [...camps.values()].map((c) => ({ id: c.id, name: c.name, spend: round2(c.spend), sales: c.sales, revenue: round2(c.revenue), saleCost: c.sales ? round2(c.spend / c.sales) : null, verdict: verdict({ spend: c.spend, sales: c.sales, target }), adSets: [...c.adSets.values()] })).sort((a, b) => b.spend - a.spend);
+  const campaigns = [...camps.values()].map((c) => ({ id: c.id, name: c.name, spend: round2(c.spend), sales: c.sales, revenue: round2(c.revenue), saleCost: c.sales ? round2(c.spend / c.sales) : null, verdict: verdict({ spend: c.spend, sales: c.sales, target, rules }), adSets: [...c.adSets.values()] })).sort((a, b) => b.spend - a.spend);
 
   return { from: p.from, to: p.to, currency: 'UAH', target, bundle: bundle ? { id: bundle.id, name: bundle.name, code: bundle.code } : null, campaigns, elements: els };
 }

@@ -6,6 +6,7 @@ const { ForbiddenError, ValidationError } = require('@ads/errors');
 const asyncHandler = require('../middleware/asyncHandler');
 const { resolveProject, sessionIdentity } = require('../middleware/resolveProject');
 const { logAction } = require('../services/journal');
+const { rulesOf, parseRules } = require('../lib/rules');
 
 const admin = express.Router(); // без projectId
 const scoped = express.Router(); // у межах проєкту
@@ -16,7 +17,7 @@ const slugify = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').repla
 const publicProject = (p, withKey) => ({
   id: p.id, name: p.name, slug: p.slug, timezone: p.timezone, currency: p.currency,
   dailyLimitUsd: Number(p.dailyLimitUsd), usdRate: Number(p.usdRate), autonomyLevel: p.autonomyLevel, dryRun: p.dryRun,
-  targetSaleCost: p.targetSaleCost === null ? null : Number(p.targetSaleCost), content2ProjectId: p.content2ProjectId, reportChatId: p.reportChatId,
+  targetSaleCost: p.targetSaleCost === null ? null : Number(p.targetSaleCost), content2ProjectId: p.content2ProjectId, reportChatId: p.reportChatId, rules: rulesOf(p),
   ...(withKey ? { apiKey: p.apiKey } : {}),
 });
 
@@ -47,7 +48,8 @@ scoped.patch('/project', asyncHandler(async (req, res) => {
   if (b.usdRate !== undefined) data.usdRate = num(b.usdRate, 1, 1000, 'Курс долара');
   if (b.autonomyLevel !== undefined) data.autonomyLevel = Math.round(num(b.autonomyLevel, 0, 3, 'Рівень самостійності'));
   if (b.dryRun !== undefined) data.dryRun = !!b.dryRun;
-  if (b.targetSaleCost !== undefined) data.targetSaleCost = b.targetSaleCost === null || b.targetSaleCost === '' ? null : num(b.targetSaleCost, 0, 10000000, 'Цільова ціна продажу');
+  if (b.targetSaleCost !== undefined) data.targetSaleCost = b.targetSaleCost === null || b.targetSaleCost === '' ? null : num(b.targetSaleCost, 0, 10000000, 'Ціна клієнта');
+  if (b.rules !== undefined) data.rules = parseRules(b.rules, req.project);
   if (b.content2ProjectId !== undefined) data.content2ProjectId = b.content2ProjectId ? String(b.content2ProjectId).slice(0, 100) : null;
   if (b.reportChatId !== undefined) data.reportChatId = b.reportChatId ? String(b.reportChatId).slice(0, 40) : null;
   if (b.timezone !== undefined) { try { new Intl.DateTimeFormat('uk', { timeZone: String(b.timezone) }); } catch { throw new ValidationError('Невідомий часовий пояс'); } data.timezone = String(b.timezone); }

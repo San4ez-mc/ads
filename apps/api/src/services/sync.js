@@ -86,7 +86,9 @@ async function syncSiteEvents(conn) {
       // Продаж із сайту — лише оплата. Заявка чи завантаження, навіть позначені сайтом як продаж, клієнтами не рахуються.
       for (const st of s.steps || []) {
         const data = { title: st.title || st.key, order: Number(st.order) || 0, branch: st.branch || null, isSale: !!st.is_sale && String(st.key) === 'pay_success', leadsTo: st.leads_to || null };
-        await db.step.upsert({ where: { elementId_key: { elementId: el.id, key: String(st.key) } }, update: data, create: { ...data, elementId: el.id, key: String(st.key) } });
+        // Що вважати оплатою, власник міняє в «Налаштуваннях»: повторна синхронізація цього не перезаписує.
+        const { isSale, ...fresh } = data;
+        await db.step.upsert({ where: { elementId_key: { elementId: el.id, key: String(st.key) } }, update: fresh, create: { ...fresh, isSale, elementId: el.id, key: String(st.key) } });
       }
     }
     let after = conn.cursor || '0'; let total = 0; let pages = 0;

@@ -2,17 +2,19 @@
 // важливість і позначку «попередньо», коли даних мало (при малому бюджеті поради все одно потрібні, але чесні).
 // Чиста функція над даними карти — легко перевіряється тестом.
 const { round2 } = require('./money');
+const { rulesOf } = require('./rules');
 
 const SEV = { high: 3, mid: 2, low: 1, info: 0 };
 const grn = (n) => `${Math.round(n).toLocaleString('uk-UA')} грн`;
 
 /** @param map результат buildMapData  @param ctx { project, overview: {todaySpend, limit}, connections } */
 function buildAdvice(map, ctx) {
-  const items = []; const target = map.target;
+  const items = []; const target = map.target; const rules = rulesOf(ctx.project);
+  const times = (n) => `${String(n).replace('.', ',')}`;
   const add = (it) => items.push({ severity: 'mid', preliminary: false, ...it });
   const ads = map.campaigns.flatMap((c) => c.adSets.flatMap((s) => s.ads.map((a) => ({ ...a, campaign: c.name, adSet: s.name, adSetId: s.id, adSetBudget: s.dailyBudget, learning: s.learningStage === 'LEARNING' }))));
 
-  if (!target) add({ kind: 'setup', severity: 'high', title: 'Задайте цільову ціну продажу', text: 'Без неї не можна сказати, що працює, а що ні. Налаштування → «Цільова ціна продажу».' });
+  if (!target) add({ kind: 'setup', severity: 'high', title: 'Задайте, скільки готові платити за клієнта', text: 'Без цього не можна сказати, що працює, а що ні. Налаштування → «Як визначати переможця».' });
 
   for (const c of ctx.connections || []) {
     if (c.status === 'error' || c.status === 'blocked') add({ kind: 'connection', severity: 'high', title: `Підключення «${c.name}» не працює`, text: c.lastError || 'Перевірте ключ у розділі «Підключення».' });
@@ -42,9 +44,14 @@ function buildAdvice(map, ctx) {
     const name = `«${a.name}»`;
     const tenDays = a.createdAt && Date.now() - new Date(a.createdAt).getTime() < 3 * 86400000;
     const early = !target || a.spend < target; // витрачено менше однієї цільової ціни — висновки ненадійні
+    // «Щось зламано»: гроші йдуть, а на шляху від цього оголошення майже нікого (міряємо щонайменше за 7 днів).
+    const wide = ctx.wide || map;
+    const spentWide = wide === map ? a.spend : (wide.campaigns.flatMap((c) => c.adSets.flatMap((s) => s.ads)).find((x) => x.externalId === a.externalId)?.spend || 0);
+    const people = Math.max(0, ...wide.elements.flatMap((e) => e.steps.map((s) => s.byAd?.[a.externalId] || 0)));
+    if (a.running && rules.brokenSpend > 0 && wide.elements.length && spentWide >= rules.brokenSpend && people < rules.brokenPeople) add({ kind: 'broken', severity: 'high', ad: a.externalId, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути в кабінеті' }, title: `Схоже, щось зламано: ${name}`, text: `Витрачено ${grn(spentWide)}, а людей від цього оголошення на сайті чи в боті ${people}. Перевірте, що посилання відкривається, бот відповідає, а в посиланні є мітка оголошення.` });
     if (a.running && target) {
-      if (a.verdict === 'bad' && a.sales === 0) add({ kind: 'pause', severity: 'high', ad: a.externalId, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути в кабінеті' }, title: `Вимкнути ${name}`, text: `Витрачено ${grn(a.spend)} (понад дві цільові ціни ${grn(target * 2)}) і жодного продажу. Це не випадковість: креатив або шлях не працює.` });
-      else if (a.verdict === 'bad') add({ kind: 'pause', severity: 'high', ad: a.externalId, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути в кабінеті' }, title: `Вимкнути або замінити ${name}`, text: `Ціна продажу ${grn(a.saleCost)} — більш ніж у 1,5 раза вища за ціль ${grn(target)}.` });
+      if (a.verdict === 'bad' && a.sales === 0) add({ kind: 'pause', severity: 'high', ad: a.externalId, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути в кабінеті' }, title: `Вимкнути ${name}`, text: `Витрачено ${grn(a.spend)} (ваша межа без клієнтів — ${grn(target * rules.noClientTargets)}) і жодного клієнта. Креатив або шлях не працює.` });
+      else if (a.verdict === 'bad') add({ kind: 'pause', severity: 'high', ad: a.externalId, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути в кабінеті' }, title: `Вимкнути або замінити ${name}`, text: `Ціна клієнта ${grn(a.saleCost)} — більш ніж у ${times(rules.priceyUpTo)} раза вища за ціль ${grn(target)}.` });
       else if (a.verdict === 'pricey') add({ kind: 'watch', severity: 'mid', ad: a.externalId, title: `Дорого: ${name}`, text: `Ціна продажу ${grn(a.saleCost)} при цілі ${grn(target)}. Дайте ще 2–3 дні або замініть креатив на інший біль.`, preliminary: a.sales < 2 });
       else if (a.verdict === 'good' && a.sales >= 2) add({ kind: 'scale', severity: 'mid', ad: a.externalId, action: a.adSetBudget ? { kind: 'set_adset_budget', adSetId: a.adSetId, dailyBudget: round2(a.adSetBudget * 1.2), label: `Підняти бюджет групи до ${round2(a.adSetBudget * 1.2)}` } : null, title: `Підсилити ${name}`, text: `Ціна продажу ${grn(a.saleCost)} (ціль ${grn(target)}), продажів ${a.sales}. Можна підняти бюджет групи на 20%${a.adSetBudget ? ` (зараз ${a.adSetBudget} на день)` : ''}, не частіше ніж раз на 3 дні.`, preliminary: false });
       else if (a.verdict === 'good') add({ kind: 'watch', severity: 'low', ad: a.externalId, title: `Добре, але лише ${a.sales} продаж: ${name}`, text: `Ціна продажу ${grn(a.saleCost)}. Поки не міняйте нічого — потрібен ще хоча б один продаж, щоб довіряти цифрі.`, preliminary: true });
@@ -63,7 +70,7 @@ function buildAdvice(map, ctx) {
   // Усе крутиться без жодного продажу довго, а бюджет малий: сказати чесно, що вирішувати рано.
   if (target && ads.length && !items.some((i) => i.kind === 'pause' || i.kind === 'scale')) {
     const spent = ads.reduce((s, a) => s + a.spend, 0); const sales = ads.reduce((s, a) => s + a.sales, 0);
-    if (spent > 0 && spent < target * 2 && sales === 0) add({ kind: 'few_data', severity: 'info', title: 'Даних ще мало для рішень', text: `Витрачено ${grn(spent)} — менше двох цільових цін (${grn(target * 2)}). Нічого не вимикайте: переможця визначає ціна клієнта, а не дешеві заходи. Дивіться, чи люди доходять до пропозиції й оплати.`, preliminary: true });
+    if (spent > 0 && spent < target * rules.noClientTargets && sales === 0) add({ kind: 'few_data', severity: 'info', title: 'Даних ще мало для рішень', text: `Витрачено ${grn(spent)} — менше за вашу межу без клієнтів (${grn(target * rules.noClientTargets)}). Нічого не вимикайте: переможця визначає ціна клієнта, а не дешеві заходи. Дивіться, чи люди доходять до пропозиції й оплати.`, preliminary: true });
   }
 
   const order = (i) => SEV[i.severity] ?? 0;

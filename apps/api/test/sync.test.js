@@ -177,6 +177,14 @@ test('стан оголошення за ціною продажу', () => {
   assert.strictEqual(verdict({ spend: 2999, sales: 0, target: 1500 }), 'few', 'без продажу до двох цільових цін — ще мало даних');
   assert.strictEqual(verdict({ spend: 3000, sales: 0, target: 1500 }), 'bad');
   assert.strictEqual(verdict({ spend: 500, sales: 0, target: null }), 'none');
+  // Правила з «Налаштувань» міняють межі.
+  const { rulesOf, parseRules } = require('../src/lib/rules');
+  const rules = parseRules({ priceyUpTo: 3, noClientTargets: 4 }, {});
+  assert.strictEqual(verdict({ spend: 4000, sales: 1, target: 1500, rules }), 'pricey');
+  assert.strictEqual(verdict({ spend: 3000, sales: 0, target: 1500, rules }), 'few');
+  assert.deepStrictEqual(rulesOf({ rules }), { priceyUpTo: 3, noClientTargets: 4, brokenSpend: 250, brokenPeople: 1 });
+  assert.throws(() => parseRules({ priceyUpTo: 0.5 }, {}));
+  assert.throws(() => parseRules({ brokenPeople: '' }, {}));
 });
 
 test('карта: креативи, кроки з людьми по оголошеннях, вхід у шлях', async () => {

@@ -21,7 +21,10 @@ async function gather(project, q) {
   ]);
   const todaySpend = round2(todayRows.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, project), 0));
   const limit = round2(Number(project.dailyLimitUsd) * Number(project.usdRate));
-  const advice = buildAdvice(map, { project, overview: { todaySpend, limit }, connections });
+  // Тривога «щось зламано» дивиться щонайменше на 7 днів: за один день звіту витрати можуть не дійти до порога.
+  const week = new Date(p.lte.getTime() - 6 * 86400000);
+  const wide = p.gte > week ? await buildMapData(project, { ...p, from: week.toISOString().slice(0, 10), gte: week }, { all: false }) : map;
+  const advice = buildAdvice(map, { project, wide, overview: { todaySpend, limit }, connections });
   // Запам'ятовуємо нові поради й дописуємо підсумок до тих, яким минув тиждень. Помилка історії не має ламати саму пораду.
   await history.record(project, advice, map).catch(() => {});
   await history.evaluate(project).catch(() => {});

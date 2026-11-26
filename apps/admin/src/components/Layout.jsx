@@ -10,6 +10,7 @@ const NAV = [
   { to: '/bundles', label: "Зв'язки", page: 'bundles' },
   { to: '/launch', label: 'Запуск', page: 'ads' },
   { to: '/history', label: 'Історія', page: 'ads' },
+  { to: '/sites', label: 'Сайти', page: 'ads' },
   { to: '/ads', label: 'Оголошення', page: 'ads' },
   { to: '/connections', label: 'Підключення', page: 'connections' },
   { to: '/journal', label: 'Журнал', page: 'journal' },

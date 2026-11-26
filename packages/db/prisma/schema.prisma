@@ -27,6 +27,8 @@ model Project {
   /// Запобіжник 16: режим «проба» — дії лише записуються в журнал.
   dryRun            Boolean  @default(true) @map("dry_run")
   targetSaleCost    Decimal? @map("target_sale_cost") @db.Decimal(12, 2)
+  /// Правила оцінки реклами з «Налаштувань» (lib/rules.js). Порожньо = стандартні.
+  rules             Json     @default("{}")
   content2ProjectId String?  @map("content2_project_id")
   reportChatId      String?  @map("report_chat_id")
   createdAt         DateTime @default(now()) @map("created_at")

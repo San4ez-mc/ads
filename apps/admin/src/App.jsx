@@ -12,6 +12,7 @@ import CreativesPage from './pages/CreativesPage';
 import ClientsPage from './pages/ClientsPage';
 import ConnectionsPage from './pages/ConnectionsPage';
 import JournalPage from './pages/JournalPage';
+import SitesPage from './pages/SitesPage';
 import SettingsPage from './pages/SettingsPage';
 import LaunchPage from './pages/LaunchPage';
 import HistoryPage from './pages/HistoryPage';
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/launch" element={<LaunchPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/ads" element={<AdsPage />} />
+            <Route path="/sites" element={<SitesPage />} />
             <Route path="/connections" element={<ConnectionsPage />} />
             <Route path="/journal" element={<JournalPage />} />
             <Route path="/settings" element={<SettingsPage />} />

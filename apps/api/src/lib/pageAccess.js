@@ -26,6 +26,8 @@ const RULES = [
   [(m, p) => m === 'GET' && /^\/launches(\/|$)/.test(p), ['ads', 'approve']],
   [(m, p) => /^\/launches(\/|$)/.test(p), ['approve']],
   [(m, p) => /^\/clients(\/|$)/.test(p), ['clients']],
+  [(m, p) => m === 'GET' && /^\/sites(\/|$)/.test(p), ['ads', 'map']],
+  [(m, p) => /^\/sites(\/|$)/.test(p), ['bundles']],
 ];
 
 function requiredPages(method, path) {

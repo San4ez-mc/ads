@@ -157,6 +157,13 @@ function Wizard({ channel, onDone, onCancel }) {
             <p className="text-xs text-slate-500 mt-1">Другий ключ того самого системного користувача з дозволами ads_management, pages_show_list і pages_read_engagement. Системному користувачу дайте кабінет (керування кампаніями) і вашу Facebook-сторінку (створення реклами). Щоб платформа створювала оголошення, додаток на developers.facebook.com може знадобитись перевести в робочий режим (Live). Усі дії йдуть через запобіжники і ваше підтвердження.</p>
           </div>
         )}
+        {channel === 'site' && (
+          <div className="md:col-span-2">
+            <label className="lbl" htmlFor="c-wsite">Ключ для надсилання правок (необов'язково)</label>
+            <input id="c-wsite" type="password" className="inp font-mono" value={f.writeKey} onChange={set('writeKey')} placeholder="Ключ із дозволом писати" autoComplete="new-password" />
+            <p className="text-xs text-slate-500 mt-1">Адмінка сайтів → «API реклами» → біля ключа «Дозволити писати». Якщо поле порожнє, для правок береться ключ на читання.</p>
+          </div>
+        )}
         <div className="md:col-span-2">
           <label className="lbl" htmlFor="c-key">{g.keyLabel}</label>
           <input id="c-key" type="password" className="inp font-mono" value={f.readKey} onChange={set('readKey')} placeholder="Вставте ключ" autoComplete="new-password" />
@@ -173,6 +180,26 @@ function Wizard({ channel, onDone, onCancel }) {
         <button className="btn-ghost ml-auto" onClick={onCancel} disabled={!!busy}>Скасувати</button>
       </div>
     </div>
+  );
+}
+
+// Заміна ключів уже підключених сайтів: поля порожні, збережене назад не показується.
+function SiteKeys({ c, onSaved }) {
+  const [f, setF] = useState({ readKey: '', writeKey: '' });
+  const [msg, setMsg] = useState('');
+  async function save(e) {
+    e.preventDefault();
+    const data = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
+    if (!Object.keys(data).length) { setMsg('Вставте хоча б один ключ'); return; }
+    try { await api.patchConnection(c.id, data); setF({ readKey: '', writeKey: '' }); setMsg('Збережено'); await onSaved(); } catch (err) { setMsg(err.message); }
+  }
+  return (
+    <form onSubmit={save} className="grid gap-2 md:grid-cols-[1fr_1fr_auto] mt-3 border-t border-slate-800 pt-3">
+      <input type="password" aria-label="Новий ключ на читання" className="inp font-mono" placeholder="Новий ключ на читання" value={f.readKey} onChange={(e) => setF({ ...f, readKey: e.target.value })} autoComplete="new-password" />
+      <input type="password" aria-label="Ключ для надсилання правок" className="inp font-mono" placeholder="Окремий ключ для правок (необов'язково)" value={f.writeKey} onChange={(e) => setF({ ...f, writeKey: e.target.value })} autoComplete="new-password" />
+      <button className="btn-ghost !py-1.5">Зберегти ключі</button>
+      {msg && <p className="text-xs text-slate-300 md:col-span-3">{msg}</p>}
+    </form>
   );
 }
 
@@ -228,6 +255,7 @@ export default function ConnectionsPage() {
                   : <button className="btn-ghost !py-1.5" onClick={() => setConfirmId(c.id)}>Видалити</button>}
               </div>
             </div>
+            {c.channel === 'site' && <SiteKeys c={c} onSaved={load} />}
             {confirmId === c.id && <p className="text-xs text-amber-200 mt-2">Разом із підключенням зникнуть завантажені з нього кампанії, оголошення і статистика. У самому кабінеті нічого не зміниться.</p>}
           </div>
         );

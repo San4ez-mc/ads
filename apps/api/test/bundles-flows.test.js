@@ -141,6 +141,11 @@ test('рекомендації: що вимкнути, що підсилити, 
   assert.ok(['high', 'high'].includes(items[0].severity), 'найважливіше першим');
   assert.ok(!items.some((i) => i.kind === 'scale' && i.ad === 'good1'), 'з одного продажу не масштабуємо');
   // Без цілі — просимо її задати і нічого не вирішуємо.
+  // «Щось зламано»: гроші йдуть, а людей від оголошення нема; поріг і вимкнення — з правил проєкту.
+  const stuck = { ...map, campaigns: [{ adSets: [{ ads: [ad({ id: 'stuck', spend: 300 })] }] }], elements: [{ key: 'flows:x', steps: [{ key: 's', order: 1, total: 0, byAd: {} }] }] };
+  assert.ok(buildAdvice(stuck, { connections: [] }).some((i) => i.kind === 'broken' && i.ad === 'stuck'));
+  assert.ok(!buildAdvice(stuck, { connections: [], project: { rules: { brokenSpend: 500 } } }).some((i) => i.kind === 'broken'));
+  assert.ok(!buildAdvice(stuck, { connections: [], project: { rules: { brokenSpend: 0 } } }).some((i) => i.kind === 'broken'));
   const none = buildAdvice({ ...map, target: null }, { overview: null, connections: [] });
   assert.ok(none.some((i) => i.kind === 'setup') && !none.some((i) => i.kind === 'pause'));
   const text = dailyReportText({ name: 'FINEKO <тест>' }, '2026-11-16', { spend: 5000, linkClicks: 80, sales: 2, revenue: 3000, saleCost: 2500, target: 1500, todaySpend: 100, todayLimit: 420 }, items, []);

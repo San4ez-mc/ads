@@ -4,6 +4,7 @@
 const { toUah } = require('./money');
 const { PLATFORM } = require('./describe');
 const { checkAdText } = require('./metaPolicy');
+const { rulesOf } = require('./rules');
 
 const grn = (n) => `${Math.round(n).toLocaleString('uk-UA')} грн`;
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
@@ -14,7 +15,7 @@ function analyze(map, rows, ctx = {}) {
   const ads = {}; const elements = {}; const general = [];
   const add = (bag, key, h) => { (bag[key] ||= []).push({ severity: 'mid', ...h }); };
   const list = map.campaigns.flatMap((c) => c.adSets.flatMap((s) => s.ads.map((a) => ({ ...a, campaign: c.name }))));
-  const target = map.target;
+  const target = map.target; const rules = rulesOf(ctx.project);
 
   const byAd = new Map();
   for (const r of rows || []) { if (!byAd.has(r.adExternalId)) byAd.set(r.adExternalId, []); byAd.get(r.adExternalId).push({ ...r, uah: toUah(r.spend, r.currency, ctx.project) }); }
@@ -47,7 +48,7 @@ function analyze(map, rows, ctx = {}) {
       if (a.ctr < 0.8) add(ads, id, { title: `Мало кому цікаво: клікає ${a.ctr}%`, text: 'Замініть картинку або перший рядок тексту: інший біль, коротший заголовок.', action: { kind: 'edit', label: 'Замінити креатив' } });
       else if (a.ctr >= 2) add(ads, id, { severity: 'info', title: `Креатив чіпляє: клікає ${a.ctr}%`, text: 'Якщо далі люди не йдуть, проблема не в оголошенні, а в тому, що вони бачать після кліку.' });
     }
-    if (target && a.spend > 0 && a.sales === 0 && a.spend >= target * 2) add(ads, id, { severity: 'high', title: 'Витрачено дві цільові ціни без продажу', text: `${grn(a.spend)} при цілі ${grn(target)} за продаж. Вимкніть або замініть шлях.`, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути оголошення' } });
+    if (target && a.spend > 0 && a.sales === 0 && a.spend >= target * rules.noClientTargets) add(ads, id, { severity: 'high', title: 'Витрачено забагато без жодного клієнта', text: `${grn(a.spend)} при цілі ${grn(target)} за клієнта. Вимкніть або замініть шлях.`, action: { kind: 'pause_ad', adId: a.id, label: 'Вимкнути оголошення' } });
     else if (target && a.spend > 0 && a.spend < target && a.sales === 0) add(ads, id, { severity: 'info', title: 'Для висновку про продажі даних ще мало', text: `Витрачено ${grn(a.spend)} з ${grn(target)} цільової ціни. Дивіться на кліки й кроки на сайті.` });
   }
 
@@ -77,6 +78,8 @@ function analyze(map, rows, ctx = {}) {
   }
 
   for (const s of ctx.emptyAdSets || []) general.push({ severity: 'info', title: `Група «${s.name}» увімкнена, але без жодного оголошення`, text: 'Вона нічого не показує. Додайте оголошення або вимкніть, щоб не плутала.' });
+  // Завдання для сайту можна не лише скопіювати, а й надіслати виконавцю (сторінка «Сайти»).
+  for (const [key, list] of Object.entries(elements)) if (key.startsWith('site:')) for (const h of list) if (h.copy) h.site = key.slice(5);
   return { ads, elements, general };
 }
 

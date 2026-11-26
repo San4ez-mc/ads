@@ -9,6 +9,7 @@ const { inBundle } = require('./bundles');
 const { link } = require('./creatives');
 const c2 = require('../channels/content2');
 const { verdict, LABEL } = require('../lib/verdict');
+const { rulesOf } = require('../lib/rules');
 const { round2 } = require('../lib/money');
 const { withPain, PAINS } = require('../lib/pains');
 
@@ -47,7 +48,7 @@ router.get('/map/plan', asyncHandler(async (req, res) => {
     const planned = ids.map((id) => byId.get(id)).filter(Boolean);
     const spend = ads.reduce((s, a) => s + a.spend, 0); const sales = ads.reduce((s, a) => s + a.sales, 0);
     const revenue = ads.reduce((s, a) => s + a.revenue, 0); const upsell = ads.reduce((s, a) => s + (a.upsellRevenue || 0), 0);
-    const state = hasAds ? verdict({ spend, sales, target }) : 'none';
+    const state = hasAds ? verdict({ spend, sales, target, rules: rulesOf(req.project) }) : 'none';
     return {
       bundle: { id: b.id, name: b.name, code: b.code, status: b.status, promise: b.promise, angle: b.angle, hypothesis: b.hypothesis, audience: b.audience ? { id: b.audience.id, name: b.audience.name } : null, testBudgetUsd: b.testBudgetUsd === null ? null : Number(b.testBudgetUsd) },
       creatives: planned, creativeIds: ids, missingCreatives: ids.length - planned.length,

@@ -28,6 +28,26 @@ function CopyButton({ text }) {
   );
 }
 
+/** Надіслати завдання виконавцю сайту (з підтвердженням). На самому сайті нічого не змінює. */
+function SendButton({ site, text }) {
+  const [state, setState] = useState({ step: 'idle' });
+  const click = (next) => async (e) => {
+    e.stopPropagation();
+    if (next !== 'send') { setState({ step: next }); return; }
+    setState({ step: 'busy' });
+    try { const r = await api.sendSiteEdit({ site, kind: 'edit', message: text.slice(0, 4000), confirm: true }); setState({ step: 'done', ...r }); } catch (err) { setState({ step: 'done', status: 'failed', message: err.message }); }
+  };
+  const btn = (label, next, cls = 'btn-ghost') => <button type="button" style={clickable} className={`nodrag nopan ${cls} !px-2 !py-1 text-xs`} onClick={click(next)}>{label}</button>;
+  if (state.step === 'done') return <div className={`text-xs mt-2 ${state.status === 'done' ? 'text-emerald-300' : 'text-red-300'}`}>{state.message}</div>;
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-2">
+      {state.step === 'idle' && btn('Надіслати на сайт', 'ask')}
+      {state.step === 'ask' && <><span className="text-xs">Надіслати правку виконавцю?</span>{btn('Так, надіслати', 'send', 'btn-primary')}{btn('Ні', 'idle')}</>}
+      {state.step === 'busy' && <span className="text-xs text-slate-400">Надсилаю…</span>}
+    </div>
+  );
+}
+
 export function HintList({ hints, onAction }) {
   return (
     <ul className="space-y-2">
@@ -38,6 +58,7 @@ export function HintList({ hints, onAction }) {
             {h.copy && <CopyButton text={h.copy} />}
           </div>
           <div className="text-xs text-slate-300 leading-snug mt-1">{h.text}</div>
+          {h.site && h.copy && <SendButton site={h.site} text={h.copy} />}
           {h.action && onAction && <button type="button" style={clickable} className="nodrag nopan btn-primary !px-2 !py-1 text-xs mt-2" onClick={(e) => { e.stopPropagation(); onAction(h.action); }}>{h.action.label}</button>}
         </li>
       ))}

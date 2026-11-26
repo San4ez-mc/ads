@@ -6,6 +6,7 @@ const { NotFoundError, ValidationError } = require('@ads/errors');
 const asyncHandler = require('../middleware/asyncHandler');
 const { adRows, period } = require('./ads');
 const { verdict, LABEL } = require('../lib/verdict');
+const { rulesOf } = require('../lib/rules');
 const { round2 } = require('../lib/money');
 const { logAction } = require('../services/journal');
 const c2 = require('../channels/content2');
@@ -100,7 +101,7 @@ router.get('/bundles', asyncHandler(async (req, res) => {
     const ads = rows.filter((a) => inBundle(a.campaign.name, b.code));
     const spend = ads.reduce((s, a) => s + a.spend, 0); const sales = ads.reduce((s, a) => s + a.sales, 0); const revenue = ads.reduce((s, a) => s + a.revenue, 0); const upsell = ads.reduce((s, a) => s + (a.upsellRevenue || 0), 0); const upsellCount = ads.reduce((s, a) => s + (a.upsellCount || 0), 0); const clicks = ads.reduce((s, a) => s + a.linkClicks, 0);
     const budget = b.testBudgetUsd === null ? null : Number(b.testBudgetUsd);
-    const v = verdict({ spend, sales, target });
+    const v = verdict({ spend, sales, target, rules: rulesOf(req.project) });
     return {
       id: b.id, name: b.name, code: b.code, creativeIds: Array.isArray(b.creativeIds) ? b.creativeIds : [], hypothesis: b.hypothesis, product: b.product, promise: b.promise, angle: b.angle, path: b.path, status: b.status,
       testBudgetUsd: budget, stopRule: b.stopRule, verdict: b.verdict, audience: b.audience, startedAt: b.startedAt, endedAt: b.endedAt,
