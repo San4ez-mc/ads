@@ -7,6 +7,7 @@ const { runProjectSync } = require('../services/sync');
 const { logAction } = require('../services/journal');
 const { toUah, round2 } = require('../lib/money');
 const { saleSteps } = require('../lib/sales');
+const describe = require('../lib/describe');
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ async function adRows(project, p, { onlyActive } = {}) {
     cur.impressions += s._sum.impressions || 0; cur.clicks += s._sum.clicks || 0; cur.linkClicks += s._sum.linkClicks || 0;
     byAd.set(s.adId, cur);
   }
-  const ads = await db.ad.findMany({ where: { projectId: project.id }, include: { campaign: { select: { id: true, name: true, externalId: true } }, adSet: { select: { id: true, name: true, externalId: true, dailyBudget: true, learningStage: true } } }, orderBy: { extCreatedAt: 'desc' } });
+  const ads = await db.ad.findMany({ where: { projectId: project.id }, include: { campaign: { select: { id: true, name: true, externalId: true } }, adSet: { select: { id: true, name: true, externalId: true, dailyBudget: true, learningStage: true, targeting: true } } }, orderBy: { extCreatedAt: 'desc' } });
   // Продажі й кроки з наших джерел (сайт тощо) за номером оголошення.
   const steps = await db.stepEvent.groupBy({ by: ['adExtId', 'stepKey', 'elementType', 'elementRef'], where: { projectId: project.id, isTest: false, adExtId: { not: null }, ts: { gte: p.gte, lt: new Date(p.lte.getTime() + 86400000) } }, _count: { _all: true }, _sum: { amount: true } });
   const sale = await saleSteps(project.id);
@@ -49,7 +50,7 @@ async function adRows(project, p, { onlyActive } = {}) {
     const f = byExt.get(a.externalId) || { steps: {}, sales: 0, revenue: 0, upsellRevenue: 0, upsellCount: 0 };
     return {
       id: a.id, externalId: a.externalId, name: a.name, channel: a.channel, status: a.status, effectiveStatus: a.effectiveStatus, running: running(a.effectiveStatus),
-      campaign: a.campaign, adSet: { id: a.adSet.id, name: a.adSet.name, externalId: a.adSet.externalId, dailyBudget: a.adSet.dailyBudget === null ? null : Number(a.adSet.dailyBudget), learningStage: a.adSet.learningStage },
+      campaign: a.campaign, adSet: { id: a.adSet.id, name: a.adSet.name, externalId: a.adSet.externalId, dailyBudget: a.adSet.dailyBudget === null ? null : Number(a.adSet.dailyBudget), learningStage: a.adSet.learningStage, audience: describe.audience(a.adSet.targeting), placements: describe.placements(a.adSet.targeting) },
       creative: { title: a.title, body: a.body, imageUrl: a.imageUrl, thumbnailUrl: a.thumbnailUrl, videoId: a.videoId, linkUrl: a.linkUrl, cta: a.cta, previewUrl: a.previewUrl },
       createdAt: a.extCreatedAt,
       spend: round2(m.spendUah), impressions: m.impressions, clicks: m.clicks, linkClicks: m.linkClicks,

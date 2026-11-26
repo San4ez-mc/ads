@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { ReactFlow, Background, Controls, MiniMap, Handle, Position, useStore } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import clsx from 'clsx';
 import { api, fmt } from '../api/client';
 import { buildMap, buildPlanMap, buildCreativeMap, COLOR } from '../lib/mapLayout';
+import { EditAdModal, HintNode, HintList } from '../components/MapActions';
+import { useAuthStore } from '../stores/authStore';
 
 const PERIODS = [{ d: 1, label: 'Сьогодні' }, { d: 7, label: '7 днів' }, { d: 14, label: '14 днів' }, { d: 30, label: '30 днів' }];
 const range = (days) => { const to = new Date(); const from = new Date(to.getTime() - (days - 1) * 86400000); return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }; };
@@ -44,7 +46,12 @@ function AdNode({ data }) {
               <div>Переходи<div className="text-sm text-slate-100">{fmt.int(a.linkClicks)}{a.cpc ? <span className="text-[11px] text-slate-400"> · {Math.round(a.cpc)} грн</span> : null}</div></div>
               <div>Продаж<div className="text-sm" style={{ color: COLOR[a.verdict] }}>{a.sales ? `${a.sales} · ${fmt.money(a.saleCost)}` : '0'}</div>{a.upsellCount > 0 && <div className="text-[11px] text-violet-300">далі: {a.upsellCount} · {fmt.money(a.upsellRevenue)}</div>}</div>
             </div>
+            <div className="text-[11px] leading-snug border-t border-slate-800 pt-2">
+              <div className="line-clamp-2" title={a.audience?.text}><span className="text-slate-500">Кому: </span><span className="text-slate-300">{a.audience?.text || 'немає даних'}</span></div>
+              <div className="line-clamp-2 mt-0.5" title={a.placements?.text}><span className="text-slate-500">Де: </span><span className="text-slate-300">{a.placements?.text || 'немає даних'}</span></div>
+            </div>
             <div className="text-[11px] text-slate-500">{STATUS[a.effectiveStatus] || a.effectiveStatus || '—'}</div>
+            {data.onEdit && <button type="button" style={{ pointerEvents: 'all' }} className="nodrag nopan btn-primary !py-1.5 w-full" onClick={(e) => { e.stopPropagation(); data.onEdit(a); }}>Внести правки</button>}
           </div>
         </>
       )}
@@ -59,14 +66,20 @@ function CampaignNode({ data }) {
     <div className="h-full w-full rounded-2xl border border-dashed border-slate-600 bg-slate-900/30">
       <div className="px-5 pt-3 cursor-pointer" title="Клік — показати шлях лише для цієї кампанії">
         <div className="text-xl font-medium truncate">{c.name}</div>
-        <div className="text-sm text-slate-400">витрачено {fmt.money(c.spend)} · продажів {c.sales} · ціна продажу <span style={{ color: COLOR[c.verdict] }}>{fmt.money(c.saleCost)}</span></div>
+        <div className="text-sm text-slate-400 truncate">витрачено {fmt.money(c.spend)} · продажів {c.sales} · ціна продажу <span style={{ color: COLOR[c.verdict] }}>{fmt.money(c.saleCost)}</span></div>
       </div>
     </div>
   );
 }
 
 function SetLabel({ data }) {
-  return <div className="text-xs text-slate-400 truncate pt-1">Група: <span className="text-slate-200">{data.name}</span>{data.dailyBudget ? ` · ${data.dailyBudget} на день` : ''}{data.learning ? ' · навчається' : ''}</div>;
+  const about = [data.audience, data.placements].filter(Boolean).join(' | ');
+  return (
+    <div className="text-xs text-slate-400 leading-tight">
+      <div className="truncate">Група: <span className="text-slate-200">{data.name}</span>{data.dailyBudget ? ` · ${data.dailyBudget} на день` : ''}{data.learning ? ' · навчається' : ''}</div>
+      {about && <div className="truncate text-[10px]" title={about}>{about}</div>}
+    </div>
+  );
 }
 
 function ElementNode({ data }) {
@@ -229,7 +242,36 @@ function CreativeCardNode({ data }) {
   );
 }
 
-const nodeTypes = { audience: AudienceNode, pain: PainNode, crCard: CreativeCardNode, ad: AdNode, campaign: CampaignNode, setLabel: SetLabel, element: ElementNode, step: StepNode, ghost: GhostNode, sale: SaleNode, lane: LaneNode, planned: PlannedNode, addCreative: AddCreativeNode, note: NoteNode };
+const nodeTypes = { hint: HintNode, audience: AudienceNode, pain: PainNode, crCard: CreativeCardNode, ad: AdNode, campaign: CampaignNode, setLabel: SetLabel, element: ElementNode, step: StepNode, ghost: GhostNode, sale: SaleNode, lane: LaneNode, planned: PlannedNode, addCreative: AddCreativeNode, note: NoteNode };
+
+/** Кнопка «Аналізувати» і стан вікна правок — спільні для обох карт з цифрами. */
+function useMapTools(query, reload) {
+  const canApprove = useAuthStore((s) => s.can('approve'));
+  const [advice, setAdvice] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [edit, setEdit] = useState(null); // { ad, preset }
+  const key = JSON.stringify(query);
+  useEffect(() => { setAdvice(null); setError(''); }, [key]);
+  const analyze = async () => {
+    setBusy(true); setError('');
+    try { setAdvice(await api.analyze(query)); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const onEdit = useCallback((ad, action) => setEdit({ ad, preset: action && action.kind !== 'edit' ? action : null }), []);
+  const handlers = useMemo(() => ({ onEdit: canApprove ? onEdit : undefined }), [canApprove, onEdit]);
+  const count = advice ? [...Object.values(advice.ads), ...Object.values(advice.elements), advice.general].reduce((n, l) => n + l.length, 0) : 0;
+  const button = <button className="btn-primary !py-1.5" disabled={busy} onClick={analyze}>{busy ? 'Аналізую…' : advice ? 'Аналізувати ще раз' : 'Аналізувати'}</button>;
+  const summary = (error || advice) && (
+    <div className="space-y-2">
+      {error && <div className="text-sm text-red-300">{error}</div>}
+      {advice && <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300"><span>{count ? `Підказок: ${count}. Вони стоять під блоками на карті.` : 'Підказок немає: за цими цифрами все гаразд або даних ще замало.'}</span><button className="btn-ghost !py-1 !px-2 text-xs" onClick={() => setAdvice(null)}>Сховати</button></div>}
+      {advice?.warnings.map((w) => <div key={w} className="text-sm text-amber-200">{w}</div>)}
+      {advice?.general.length > 0 && <div className="max-w-[640px]"><HintList hints={advice.general} /></div>}
+    </div>
+  );
+  const modal = edit && <EditAdModal ad={edit.ad} preset={edit.preset} onClose={() => setEdit(null)} onChanged={reload} />;
+  return { advice, handlers, button, summary, modal };
+}
 
 function AdPanel({ ad, onClose }) {
   const rows = [['Витрачено', fmt.money(ad.spend)], ['Покази', fmt.int(ad.impressions)], ['Переходи', fmt.int(ad.linkClicks)], ['Ціна переходу', fmt.money2(ad.cpc)], ['Частка переходів', ad.ctr !== null ? `${ad.ctr}%` : '—'], ['Продажі', ad.sales], ['Виручка', fmt.money(ad.revenue)], ['Ціна продажу', fmt.money(ad.saleCost)]];
@@ -261,14 +303,16 @@ function AdsMapView() {
   const [params, setParams] = useSearchParams();
   const bundleId = params.get('bundle') || '';
   const [bundles, setBundles] = useState([]);
+  const [version, setVersion] = useState(0);
+  const tools = useMapTools({ ...range(days), bundle: bundleId || undefined }, () => setVersion((v) => v + 1));
   useEffect(() => { api.bundles().then((d) => setBundles(d.bundles)).catch(() => {}); }, []);
 
   useEffect(() => {
     setError('');
     api.map({ ...range(days), all: all ? 1 : undefined, bundle: bundleId || undefined }).then((d) => { setData(d); setSelected(new Set()); }).catch((e) => setError(e.message));
-  }, [days, all, bundleId]);
+  }, [days, all, bundleId, version]);
 
-  const { nodes, edges } = useMemo(() => (data ? buildMap(data, selected) : { nodes: [], edges: [] }), [data, selected]);
+  const { nodes, edges } = useMemo(() => (data ? buildMap(data, selected, tools.advice, tools.handlers) : { nodes: [], edges: [] }), [data, selected, tools.advice, tools.handlers]);
   const allAds = useMemo(() => (data ? data.campaigns.flatMap((c) => c.adSets.flatMap((s) => s.ads)) : []), [data]);
   const one = selected.size === 1 ? allAds.find((a) => selected.has(a.externalId)) : null;
 
@@ -297,12 +341,15 @@ function AdsMapView() {
           <option value="">Увесь проєкт</option>
           {bundles.map((b) => <option key={b.id} value={b.id}>{b.code ? `[${b.code}] ` : ''}{b.name}</option>)}
         </select>
+        {tools.button}
         <label className="flex items-center gap-2 text-sm text-slate-400 ml-2"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />Показати й ті, що без витрат</label>
         <div className="ml-auto flex items-center gap-3 text-xs text-slate-400">
           {selected.size > 0 ? <><span>Шлях показано для {selected.size} з {allAds.length} оголошень</span><button className="btn-ghost !py-1 !px-2 text-xs" onClick={() => setSelected(new Set())}>Показати всі</button></> : <span>Клік на креатив — шлях лише його людей. Shift+клік — додати ще один.</span>}
           {['good', 'pricey', 'bad', 'few'].map((v) => <span key={v} className="flex items-center gap-1"><span className="inline-block w-3 h-1.5 rounded" style={{ background: COLOR[v] }} />{{ good: 'працює', pricey: 'дорого', bad: 'зливає', few: 'мало даних' }[v]}</span>)}
         </div>
       </div>
+      {tools.summary}
+      {tools.modal}
       {empty ? (
         <div className="card p-8 text-center">
           <h2 className="text-lg font-medium mb-2">{data.bundle ? "У цієї зв'язки ще нема оголошень" : 'На карті поки порожньо'}</h2>
@@ -311,7 +358,7 @@ function AdsMapView() {
         </div>
       ) : (
         <div className="relative flex-1 rounded-xl overflow-hidden border border-slate-800">
-          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodeClick={onNodeClick} onPaneClick={() => setSelected(new Set())} colorMode="dark" fitView fitViewOptions={{ padding: 0.08 }} minZoom={0.05} maxZoom={2} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}>
+          <ReactFlow key={tools.advice ? 'hints' : 'plain'} nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodeClick={onNodeClick} onPaneClick={() => setSelected(new Set())} colorMode="dark" fitView fitViewOptions={{ padding: 0.08 }} minZoom={0.05} maxZoom={2} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}>
             <Background gap={32} color="#1e293b" />
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeColor={(n) => (n.type === 'ad' ? COLOR[n.data.ad.verdict] : n.type === 'sale' ? '#34d399' : '#334155')} maskColor="rgba(2,6,23,.7)" />
@@ -331,9 +378,11 @@ function PlanView() {
   const [data, setData] = useState(null);
   const [bundles, setBundles] = useState([]);
   const [error, setError] = useState('');
+  const [version, setVersion] = useState(0);
+  const tools = useMapTools({ ...range(days), bundle: bundleId || undefined }, () => setVersion((v) => v + 1));
   useEffect(() => { api.bundles().then((d) => setBundles(d.bundles)).catch(() => {}); }, []);
-  useEffect(() => { setError(''); api.plan({ ...range(days), bundle: bundleId || undefined }).then(setData).catch((e) => setError(e.message)); }, [days, bundleId]);
-  const { nodes, edges } = useMemo(() => (data ? buildPlanMap(data) : { nodes: [], edges: [] }), [data]);
+  useEffect(() => { setError(''); api.plan({ ...range(days), bundle: bundleId || undefined }).then(setData).catch((e) => setError(e.message)); }, [days, bundleId, version]);
+  const { nodes, edges } = useMemo(() => (data ? buildPlanMap(data, tools.advice, tools.handlers) : { nodes: [], edges: [] }), [data, tools.advice, tools.handlers]);
   if (error) return <div className="card p-6 text-red-300 text-sm">{error}</div>;
   if (!data) return <div className="text-slate-500 text-sm">Завантаження…</div>;
   // Усі воронки одразу: на старті показуємо перші дві крупно, решту видно, якщо відʼїхати.
@@ -347,14 +396,17 @@ function PlanView() {
           {bundles.map((b) => <option key={b.id} value={b.id}>{b.code ? `[${b.code}] ` : ''}{b.name}</option>)}
         </select>
         <div className="flex gap-1">{PERIODS.map((p) => <button key={p.d} className={clsx('btn !py-1.5', days === p.d ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => setDays(p.d)}>{p.label}</button>)}</div>
+        {tools.button}
         <span className="text-xs text-slate-400 ml-auto">{data.metaConnected ? 'Цифри реклами додаються до кожної воронки автоматично.' : 'Рекламний кабінет не підключено: бачите план воронок, цифри зʼявляться після підключення.'}</span>
         {!data.metaConnected && <Link to="/connections" className="btn-ghost !py-1.5">Підключити кабінет</Link>}
       </div>
+      {tools.summary}
+      {tools.modal}
       {data.lanes.length === 0 ? (
         <div className="card p-8 text-center"><h2 className="text-lg font-medium mb-2">Воронок ще нема</h2><p className="text-slate-400 text-sm mb-4">Створіть першу зв'язку: аудиторія, обіцянка і шлях.</p><Link to="/bundles" className="btn-primary">До зв'язок</Link></div>
       ) : (
         <div className="relative flex-1 rounded-xl overflow-hidden border border-slate-800">
-          <ReactFlow key={bundleId || 'all'} nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode="dark" fitView fitViewOptions={{ padding: 0.05, nodes: focus }} minZoom={0.03} maxZoom={2} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}>
+          <ReactFlow key={`${bundleId || 'all'}:${tools.advice ? 'hints' : 'plain'}`} nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode="dark" fitView fitViewOptions={{ padding: 0.05, nodes: focus }} minZoom={0.03} maxZoom={2} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}>
             <Background gap={32} color="#1e293b" />
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeColor={(n) => (n.type === 'sale' ? '#34d399' : n.type === 'lane' ? '#8b5cf6' : '#334155')} maskColor="rgba(2,6,23,.7)" />
@@ -366,7 +418,7 @@ function PlanView() {
 }
 
 // Карта креативів: усі креативи контент-платформи за аудиторіями й болями.
-function CreativesMapView() {
+export function CreativesMapView() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => { api.creativeMap().then(setData).catch((e) => setError(e.message)); }, []);
@@ -392,14 +444,20 @@ function CreativesMapView() {
 
 export default function MapPage() {
   const [params, setParams] = useSearchParams();
-  const view = ['ads', 'creatives'].includes(params.get('view')) ? params.get('view') : 'plan';
+  // Колишня вкладка «Креативи» карти тепер живе в розділі «Креативи».
+  if (params.get('view') === 'creatives') return <Navigate to="/creatives?view=map" replace />;
+  const view = params.get('view') === 'ads' ? 'ads' : 'plan';
+  const bundle = params.get('bundle');
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        {[['plan', 'Воронки'], ['creatives', 'Креативи'], ['ads', 'Оголошення']].map(([k, label]) => <button key={k} className={clsx('btn !py-1.5', view === k ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => setParams({ view: k })}>{label}</button>)}
-        <span className="text-xs text-slate-500 ml-2">{view === 'plan' ? 'Конструктор: креативи → шлях → продаж. Працює без рекламного кабінету.' : view === 'creatives' ? 'Усі креативи за аудиторіями й болями.' : 'Реальні оголошення з кабінету і ті, хто з них прийшов.'}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-lg font-medium mr-2">Карта реклами</h1>
+        <div className="inline-flex rounded-lg bg-slate-900 border border-slate-800 p-1" role="group" aria-label="Як групувати карту">
+          {[['plan', 'По зв\'язках'], ['ads', 'По кампаніях']].map(([k, label]) => <button key={k} aria-pressed={view === k} className={clsx('btn !py-1', view === k ? 'bg-brand/20 text-brand-light' : 'text-slate-300 hover:bg-slate-800')} onClick={() => setParams(bundle ? { view: k, bundle } : { view: k })}>{label}</button>)}
+        </div>
+        <span className="text-xs text-slate-500">{view === 'plan' ? 'Кожна зв\'язка окремою смугою: реклама → шлях → продаж. Видно й ті, що ще не запущені.' : 'Лише те, що є в кабінеті: кампанії, групи, оголошення і хто з них прийшов.'}</span>
       </div>
-      {view === 'plan' ? <PlanView /> : view === 'creatives' ? <CreativesMapView /> : <AdsMapView />}
+      {view === 'plan' ? <PlanView /> : <AdsMapView />}
     </div>
   );
 }

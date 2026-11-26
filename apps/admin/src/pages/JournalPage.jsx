@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, fmt } from '../api/client';
 
-const KIND = { project_created: 'Створено проєкт', project_settings: 'Змінено налаштування', project_key_rotated: 'Замінено ключ проєкту', connection_added: 'Додано підключення', connection_changed: 'Змінено підключення', connection_removed: 'Видалено підключення', sync_run: 'Оновлення даних', launch_draft: 'Чернетка кампанії', launch_create: 'Створення кампанії', launch_start: 'Увімкнення показу', launch_stop: 'Зупинка кампанії', launch_deleted: 'Прибрано зі списку' };
+const KIND = { project_created: 'Створено проєкт', project_settings: 'Змінено налаштування', project_key_rotated: 'Замінено ключ проєкту', connection_added: 'Додано підключення', connection_changed: 'Змінено підключення', connection_removed: 'Видалено підключення', sync_run: 'Оновлення даних', experiment_added: 'Новий варіант у історії', experiment_changed: 'Зміна тесту', experiment_deleted: 'Прибрано варіант', set_placements: 'Зміна площадок', replace_creative: 'Заміна креативу', campaign_fixed: 'Виправлення кампанії', launch_draft: 'Чернетка кампанії', launch_create: 'Створення кампанії', launch_start: 'Увімкнення показу', launch_stop: 'Зупинка кампанії', launch_deleted: 'Прибрано зі списку' };
 const STATE = { dry_run: 'проба', blocked: 'заблоковано', failed: 'не вдалося' };
 const who = (a) => (a.startsWith('user') ? 'Людина' : a === 'flows' ? 'Воронка Flows' : a === 'ai' ? 'ШІ' : a.startsWith('rule') ? 'Правило' : a);
 

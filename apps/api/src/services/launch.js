@@ -73,6 +73,8 @@ function parseSpec(b = {}) {
   s.advantageAudience = !!b.advantageAudience;
   // Audience Network (сторонні додатки) вимкнена за замовчуванням: на першій кампанії забрала 79% грошей випадковими кліками.
   s.audienceNetwork = !!b.audienceNetwork;
+  // Threads теж лише за галочкою: без пов'язаного профілю Meta відмовляє («Threads не має права керувати сторінкою»).
+  s.threads = !!b.threads;
   s.ageMin = int(b.ageMin, 25); s.ageMax = int(b.ageMax, 55);
   if (!(s.ageMin >= 18 && s.ageMax <= 65 && s.ageMin <= s.ageMax)) throw new ValidationError('Вік — від 18 до 65');
   // Правило Meta: коли аудиторію можна розширювати, нижня межа не вища за 25, а верхньої нема.
@@ -195,7 +197,7 @@ async function check(project, launch, { actor = 'user:' } = {}) {
 const campaignName = (bundle, spec) => `[${bundle.code}] ${spec.name || bundle.name}`.slice(0, 240);
 
 /** Площадки. Threads Meta не пропонує для мети «ліди», тому там його нема. */
-const placements = (spec) => ['facebook', 'instagram', 'messenger', ...(spec.goal === 'leads' ? [] : ['threads']), ...(spec.audienceNetwork ? ['audience_network'] : [])];
+const placements = (spec) => ['facebook', 'instagram', 'messenger', ...(spec.threads && spec.goal !== 'leads' ? ['threads'] : []), ...(spec.audienceNetwork ? ['audience_network'] : [])];
 
 /** Посилання конкретного оголошення. Номери підставляються справжні (а не макроси Meta), щоб бот і сайт точно знали джерело. */
 function adLink(spec, bundle, creative, ids) {
@@ -384,4 +386,4 @@ async function stop(project, launch, { actor }) {
   return { status: 'done', message: 'Кампанію вимкнено.' };
 }
 
-module.exports = { parseSpec, parseCreativeText, adLink, check, create, start, stop, GOALS, PIXEL_EVENTS, STALE_MS };
+module.exports = { parseSpec, parseCreativeText, adLink, check, create, start, stop, GOALS, PIXEL_EVENTS, STALE_MS, contentCreatives, creativeFields, download, explain };

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { api } from '../api/client';
+import { CreativesMapView } from './MapPage';
 
 const STATUS = { draft: 'чернетка', scheduled: 'заплановано', published: 'у роботі', archived: 'в архіві' };
 const GEN = { pending: 'ще створюється', processing: 'створюється', done: 'готово', failed: 'помилка' };
@@ -63,6 +64,8 @@ function Order({ bundles, wishes, onDone }) {
 }
 
 export default function CreativesPage() {
+  const [params, setParams] = useSearchParams();
+  const asMap = params.get('view') === 'map';
   const [list, setList] = useState(null);
   const [wishes, setWishes] = useState([]);
   const [bundles, setBundles] = useState([]);
@@ -72,8 +75,15 @@ export default function CreativesPage() {
 
   if (error) return <div className="card p-8 text-center"><p className="text-sm text-slate-300 mb-4">{error}</p><Link to="/connections" className="btn-primary">До підключень</Link></div>;
   if (!list) return <div className="text-slate-500 text-sm">Завантаження…</div>;
+  const switcher = (
+    <div className="inline-flex rounded-lg bg-slate-900 border border-slate-800 p-1" role="group" aria-label="Як показати креативи">
+      {[[false, 'Список і замовлення'], [true, 'За аудиторіями й болями']].map(([k, label]) => <button key={label} aria-pressed={asMap === k} className={clsx('btn !py-1', asMap === k ? 'bg-brand/20 text-brand-light' : 'text-slate-300 hover:bg-slate-800')} onClick={() => setParams(k ? { view: 'map' } : {})}>{label}</button>)}
+    </div>
+  );
+  if (asMap) return <div className="space-y-3">{switcher}<CreativesMapView /></div>;
   return (
     <div className="space-y-5">
+      {switcher}
       <Order bundles={bundles} wishes={wishes} onDone={() => setTimeout(load, 1500)} />
       <div className="flex items-baseline gap-3"><h1 className="text-lg font-medium">Креативи з контент-платформи</h1><span className="text-sm text-slate-400">{list.length}</span></div>
       {list.length === 0 ? <div className="card p-8 text-center text-slate-400 text-sm">Рекламних креативів ще нема. Замовте перші формою вище.</div> : (

@@ -9,6 +9,9 @@ const { verdict, LABEL } = require('../lib/verdict');
 const { round2 } = require('../lib/money');
 const { saleSteps } = require('../lib/sales');
 const { inBundle } = require('./bundles');
+const meta = require('../channels/meta');
+const { decrypt, scrub } = require('../lib/secrets');
+const { analyze } = require('../lib/analyze');
 
 const router = express.Router();
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return null; } };
@@ -70,7 +73,7 @@ async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
     const c = camps.get(a.campaign.id);
     if (!c.adSets.has(a.adSet.id)) c.adSets.set(a.adSet.id, { ...a.adSet, ads: [] });
     const v = verdict({ spend: a.spend, sales: a.sales, target });
-    c.adSets.get(a.adSet.id).ads.push({ id: a.id, externalId: a.externalId, name: a.name, effectiveStatus: a.effectiveStatus, running: a.running, creative: a.creative, spend: a.spend, impressions: a.impressions, linkClicks: a.linkClicks, cpc: a.cpc, ctr: a.ctr, sales: a.sales, revenue: a.revenue, upsellRevenue: a.upsellRevenue, upsellCount: a.upsellCount, saleCost: a.saleCost, verdict: v, verdictLabel: LABEL[v], entry: entryOf(a) });
+    c.adSets.get(a.adSet.id).ads.push({ id: a.id, adSetId: a.adSet.id, adSetName: a.adSet.name, adSetBudget: a.adSet.dailyBudget, audience: a.adSet.audience, placements: a.adSet.placements, externalId: a.externalId, name: a.name, effectiveStatus: a.effectiveStatus, running: a.running, creative: a.creative, spend: a.spend, impressions: a.impressions, linkClicks: a.linkClicks, cpc: a.cpc, ctr: a.ctr, sales: a.sales, revenue: a.revenue, upsellRevenue: a.upsellRevenue, upsellCount: a.upsellCount, saleCost: a.saleCost, verdict: v, verdictLabel: LABEL[v], entry: entryOf(a) });
     c.spend += a.spend; c.sales += a.sales; c.revenue += a.revenue;
   }
   const campaigns = [...camps.values()].map((c) => ({ id: c.id, name: c.name, spend: round2(c.spend), sales: c.sales, revenue: round2(c.revenue), saleCost: c.sales ? round2(c.spend / c.sales) : null, verdict: verdict({ spend: c.spend, sales: c.sales, target }), adSets: [...c.adSets.values()] })).sort((a, b) => b.spend - a.spend);
@@ -80,6 +83,20 @@ async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
 
 router.get('/map', asyncHandler(async (req, res) => {
   res.json({ ok: true, data: await buildMapData(req.project, period(req.query), { all: req.query.all === '1', bundleId: req.query.bundle || null }) });
+}));
+
+// Кнопка «Аналізувати»: цифри карти + витрати по площадках із кабінету → підказки під кожним блоком.
+// Лише читання. Якщо Meta не відповіла, решта підказок усе одно рахується.
+router.get('/map/analyze', asyncHandler(async (req, res) => {
+  const p = period(req.query);
+  const map = await buildMapData(req.project, p, { all: false, bundleId: req.query.bundle || null });
+  const conns = await db.connection.findMany({ where: { projectId: req.project.id, channel: 'meta', secretRead: { not: null } } });
+  const rows = []; const warnings = [];
+  for (const c of conns) {
+    try { rows.push(...await meta.fetchPlacements(decrypt(c.secretRead), c.externalId, p.from, p.to)); } catch (e) { warnings.push(`Площадки з кабінету «${c.name}» не отримано: ${scrub(e.message)}`); }
+  }
+  const emptyAdSets = await db.adSet.findMany({ where: { projectId: req.project.id, effectiveStatus: 'ACTIVE', campaign: { effectiveStatus: 'ACTIVE' }, ads: { none: {} } }, select: { name: true } });
+  res.json({ ok: true, data: { ...analyze(map, rows, { project: req.project, emptyAdSets }), warnings, from: p.from, to: p.to } });
 }));
 
 module.exports = router;

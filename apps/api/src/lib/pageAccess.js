@@ -18,6 +18,8 @@ const RULES = [
   [(m, p) => /^\/(ads|overview|map|advice|report)(\/|$)/.test(p), ['ads', 'map']],
   [(m, p) => /^\/sync(\/|$)/.test(p), ['ads', 'connections']],
   [(m, p) => /^\/journal(\/|$)/.test(p), ['journal']],
+  [(m, p) => m === 'GET' && /^\/experiments(\/|$)/.test(p), ['ads', 'map', 'bundles']],
+  [(m, p) => /^\/experiments(\/|$)/.test(p), ['bundles']],
   [(m, p) => m !== 'GET' && /^\/(bundles|audiences|elements)(\/|$)/.test(p), ['bundles']],
   [(m, p) => /^\/creatives(\/|$)/.test(p), ['creatives']],
   [(m, p) => /^\/actions(\/|$)/.test(p), ['approve']],

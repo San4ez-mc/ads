@@ -123,7 +123,7 @@ test('створене: усе вимкнене (3), номер оголошен
   assert.strictEqual(objects[row.ids.campaign].status, 'PAUSED');
   assert.strictEqual(objects[row.ids.adSet].status, 'PAUSED');
   assert.strictEqual(objects[row.ids.adSet].daily_budget, '500');
-  assert.deepStrictEqual(JSON.parse(objects[row.ids.adSet].targeting), { geo_locations: { countries: ['UA'] }, age_min: 25, age_max: 55, targeting_automation: { advantage_audience: 0 }, publisher_platforms: ['facebook', 'instagram', 'messenger', 'threads'] });
+  assert.deepStrictEqual(JSON.parse(objects[row.ids.adSet].targeting), { geo_locations: { countries: ['UA'] }, age_min: 25, age_max: 55, targeting_automation: { advantage_audience: 0 }, publisher_platforms: ['facebook', 'instagram', 'messenger'] });
   assert.ok(objects[row.ids.campaign].name.startsWith('[B1] '), 'код зв\'язки в назві кампанії');
   for (const i of items) {
     assert.strictEqual(objects[i.ad].status, 'PAUSED');

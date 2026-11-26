@@ -6,15 +6,19 @@ const meta = require('../channels/meta');
 const { decrypt, scrub } = require('../lib/secrets');
 const { logAction } = require('./journal');
 const { toUah, round2 } = require('../lib/money');
+const launch = require('./launch');
+const { PLATFORM } = require('../lib/describe');
 
-const KINDS = ['pause_ad', 'resume_ad', 'set_adset_budget'];
+const KINDS = ['pause_ad', 'resume_ad', 'set_adset_budget', 'set_placements', 'replace_creative'];
+const ON_ADSET = ['set_adset_budget', 'set_placements']; // дії над групою; решта — над оголошенням
+const PLACEMENTS = ['facebook', 'instagram', 'messenger', 'threads', 'audience_network'];
 const DAY = 86400000;
 const MAX_BUDGET_STEP = 0.2; // (7) не більше 20% за раз
 const BUDGET_COOLDOWN_DAYS = 3; // (7) і не частіше раз на 3 дні для групи
 const FRESH_DAYS = 3; // (8) свіжі зміни й «навчання» не чіпаємо, крім аварійного вимкнення
 
 /** Рівень самостійності, потрібний, щоб актор без людини (правило, ШІ) виконав дію (15). Людина з підтвердженням — завжди. */
-const NEEDED_LEVEL = { pause_ad: 2, resume_ad: 3, set_adset_budget: 3 };
+const NEEDED_LEVEL = { pause_ad: 2, resume_ad: 3, set_adset_budget: 3, set_placements: 4, replace_creative: 4 }; // 4 = лише людина
 
 const money = (n) => `${Math.round(n)} грн`;
 
@@ -27,8 +31,9 @@ async function check(project, input, { actor = 'user:' } = {}) {
   const human = String(actor).startsWith('user:');
   if (!human && project.autonomyLevel < NEEDED_LEVEL[kind]) reasons.push(`(15) Рівень самостійності ${project.autonomyLevel} менший за потрібний ${NEEDED_LEVEL[kind]}: без підтвердження людини ця дія не виконується`);
 
-  const ad = kind === 'set_adset_budget' ? null : await db.ad.findFirst({ where: { projectId: project.id, id: String(input.adId || '') }, include: { adSet: true, campaign: true } });
-  const adSet = kind === 'set_adset_budget' ? await db.adSet.findFirst({ where: { projectId: project.id, id: String(input.adSetId || '') }, include: { campaign: true } }) : ad?.adSet;
+  const onSet = ON_ADSET.includes(kind);
+  const ad = onSet ? null : await db.ad.findFirst({ where: { projectId: project.id, id: String(input.adId || '') }, include: { adSet: true, campaign: true } });
+  const adSet = onSet ? await db.adSet.findFirst({ where: { projectId: project.id, id: String(input.adSetId || '') }, include: { campaign: true } }) : ad?.adSet;
   if (!adSet) return { ok: false, reasons: ['Об\'єкт не знайдено в синхронізованих даних. Оновіть дані й спробуйте ще раз.'], notes };
 
   const campaign = ad ? ad.campaign : adSet.campaign; // оголошення тягне кампанію зі свого рівня, група — зі свого
@@ -81,7 +86,40 @@ async function check(project, input, { actor = 'user:' } = {}) {
     }
   }
 
-  return { ok: reasons.length === 0, reasons, notes, ad: ad && { id: ad.id, name: ad.name, status: ad.status }, adSet: { id: adSet.id, name: adSet.name, externalId: adSet.externalId }, connectionId: conn?.id, spentToday: round2(spentToday), limit: round2(limit), dryRun: !!project.dryRun };
+  let creative = null;
+  if (kind === 'set_placements' || kind === 'replace_creative') {
+    // (8) Зміна площадок чи креативу перезапускає навчання: свіжі й «навчальні» групи не чіпаємо.
+    if (adSet.learningStage === 'LEARNING') reasons.push('(8) Група ще навчається: площадки й креатив зараз не чіпаємо');
+    if (adSet.extUpdatedAt && Date.now() - new Date(adSet.extUpdatedAt).getTime() < FRESH_DAYS * DAY) reasons.push(`(8) Групу змінювали менше ${FRESH_DAYS} днів тому: зачекайте, щоб Meta не скинула навчання`);
+    const since = new Date(Date.now() - FRESH_DAYS * DAY);
+    const own = onSet ? adSet.externalId : ad.externalId;
+    if (await db.actionLog.findFirst({ where: { projectId: project.id, kind, target: own, status: 'done', createdAt: { gte: since } } })) reasons.push(`(8) Тут уже міняли це менше ${FRESH_DAYS} днів тому`);
+  }
+  if (kind === 'set_placements') {
+    const list = Array.isArray(input.placements) ? input.placements : [];
+    if (!list.length || list.some((x) => !PLACEMENTS.includes(x))) reasons.push('Оберіть хоча б одну площадку зі списку');
+    if (list.includes('threads') && !list.includes('instagram')) reasons.push('Threads працює лише разом з Instagram');
+    notes.push(`Площадки: ${list.map((x) => PLATFORM[x] || x).join(', ')}`);
+  }
+  if (kind === 'replace_creative') {
+    try {
+      const got = await launch.contentCreatives(project);
+      const c = got.creatives.find((x) => x.id === input.creativeId);
+      if (!c) reasons.push('Креатив не знайдено в контент-платформі');
+      else {
+        if (c.violations?.length) reasons.push(`(4) Креатив №${c.number} не пройшов перевірку правил реклами: ${c.violations.join('; ')}`);
+        else if (c.status === 'draft') reasons.push(`(4) Креатив №${c.number} ще чернетка`);
+        const text = launch.parseCreativeText(c.text);
+        if (!text) reasons.push(`Креатив №${c.number}: не вдалося прочитати текст і заголовок`);
+        let media = null; try { media = new URL(c.mediaUrl); } catch { /* нема файла */ }
+        if (!media || media.origin !== got.origin) reasons.push(`Креатив №${c.number}: нема картинки з контент-платформи`);
+        else if (c.mediaType !== 'image') reasons.push('Замінити поки можна лише на картинку; з відео створюйте нову кампанію на сторінці «Запуск»');
+        if (text) { creative = { id: c.id, number: c.number, mediaUrl: c.mediaUrl, origin: got.origin, ...text }; notes.push(`Новий креатив №${c.number}: «${text.headline}»`); }
+      }
+    } catch (e) { reasons.push(`(4) Не вдалося перевірити креатив: ${scrub(e.message)}`); }
+  }
+
+  return { ok: reasons.length === 0, reasons, notes, creative, adExtId: ad?.externalId, ad: ad && { id: ad.id, name: ad.name, status: ad.status }, adSet: { id: adSet.id, name: adSet.name, externalId: adSet.externalId }, connectionId: conn?.id, spentToday: round2(spentToday), limit: round2(limit), dryRun: !!project.dryRun };
 }
 
 /** Продажі й витрати по списку оголошень за останні 14 днів (для правила 9). */
@@ -101,12 +139,13 @@ async function salesEvidence(project, adExtIds) {
 async function perform(project, input, { actor }) {
   const verdict = await check(project, input, { actor });
   const target = verdict.ad ? verdict.ad.name : verdict.adSet?.name;
-  const logTarget = input.kind === 'set_adset_budget' ? verdict.adSet?.externalId : (verdict.ad && (await db.ad.findUnique({ where: { id: verdict.ad.id }, select: { externalId: true } }))?.externalId);
+  const logTarget = ON_ADSET.includes(input.kind) ? verdict.adSet?.externalId : verdict.adExtId;
   const reasonText = input.reason ? String(input.reason).slice(0, 500) : null;
   if (!verdict.ok) {
     await logAction(project.id, actor, input.kind, { target: logTarget || String(input.adId || input.adSetId || ''), reason: `${reasonText || ''}${reasonText ? ' | ' : ''}${verdict.reasons.join('; ')}`, status: 'blocked' });
     return { status: 'blocked', reasons: verdict.reasons, notes: verdict.notes };
   }
+  if (input.kind === 'set_placements' || input.kind === 'replace_creative') return change(project, input, verdict, { actor, target, logTarget, reasonText });
   const before = input.kind === 'set_adset_budget' ? { dailyBudget: (await db.adSet.findUnique({ where: { id: verdict.adSet.id } })).dailyBudget } : { status: verdict.ad.status };
   const after = input.kind === 'set_adset_budget' ? { dailyBudget: Number(input.dailyBudget) } : { status: input.kind === 'pause_ad' ? 'PAUSED' : 'ACTIVE' };
   // (16) Режим «проба»: нічого не міняємо, лише записуємо «зробив би».
@@ -143,6 +182,53 @@ async function perform(project, input, { actor }) {
   await logAction(project.id, actor, input.kind, { target: logTarget, before, after: { ...after, confirmedInAccount: confirmed, accountState: applied }, reason: reasonText, status: confirmed ? 'done' : 'failed' });
   if (!confirmed) return { status: 'failed', message: 'Meta прийняла запит, але зміну в кабінеті підтвердити не вдалося. Перевірте оголошення в Ads Manager.', applied };
   return { status: 'done', message: `Готово: ${target}.`, before, after, applied };
+}
+
+/** Зміна площадок групи або креативу оголошення (після запобіжників): читаємо з кабінету → міняємо → перечитуємо (17). */
+async function change(project, input, verdict, { actor, target, logTarget, reasonText }) {
+  const conn = await db.connection.findUnique({ where: { id: verdict.connectionId } });
+  let before = null; let after = null;
+  const fail = async (message) => { await logAction(project.id, actor, input.kind, { target: logTarget, before, after, reason: message.slice(0, 500), status: 'failed' }); return { status: 'failed', message }; };
+  if (project.dryRun) {
+    await logAction(project.id, actor, input.kind, { target: logTarget, after: input.kind === 'set_placements' ? { placements: input.placements } : { creative: verdict.creative.number }, reason: reasonText, status: 'dry_run' });
+    return { status: 'dry_run', message: `Режим «проба»: ${target} — нічого не змінено, дію записано в журнал як «зробив би».` };
+  }
+  try {
+    const token = decrypt(conn.secretWrite);
+    if (input.kind === 'set_placements') {
+      const current = await meta.readTargeting(token, logTarget);
+      const next = { ...current, publisher_platforms: input.placements };
+      // Налаштування, привʼязані до вимкненої площадки, Meta не приймає.
+      if (!input.placements.includes('audience_network')) { delete next.audience_network_positions; if (next.brand_safety_content_filter_levels) next.brand_safety_content_filter_levels = next.brand_safety_content_filter_levels.filter((x) => !x.startsWith('AN_')); }
+      for (const p of ['facebook', 'instagram', 'messenger', 'threads']) if (!input.placements.includes(p)) delete next[`${p}_positions`];
+      before = { placements: current.publisher_platforms || 'автоматичні' }; after = { placements: input.placements };
+      await meta.setTargeting(token, logTarget, next);
+      const back = (await meta.readTargeting(token, logTarget)).publisher_platforms || [];
+      if ([...back].sort().join() !== [...input.placements].sort().join()) return fail('Meta прийняла запит, але площадки в кабінеті інші. Перевірте групу в Ads Manager.');
+      await db.adSet.update({ where: { id: verdict.adSet.id }, data: { targeting: next, extUpdatedAt: new Date() } });
+    } else {
+      const old = await meta.readAdCreative(token, logTarget);
+      const story = old.object_story_spec || {};
+      const oldLink = story.link_data?.link || story.video_data?.call_to_action?.value?.link;
+      if (!story.page_id || !oldLink) return fail('У цього оголошення креатив з готового допису: замінити його звідси не можна');
+      const u = new URL(oldLink); const telegram = /(^|\.)t\.me$/i.test(u.hostname);
+      // Мітка оголошення в посиланні: щоб візити й діалоги привʼязувались саме до нього.
+      if (telegram) { const start = (u.searchParams.get('start') || '').replace(/__[ac][A-Za-z0-9]+$/, ''); if (start) u.searchParams.set('start', `${start}__a${logTarget}`); } else u.searchParams.set('ad_id', logTarget);
+      const c = verdict.creative; const name = `№${c.number} · ${c.headline}`.slice(0, 240);
+      const imageHash = await meta.uploadImage(token, conn.externalId, await launch.download(c.mediaUrl, c.origin));
+      const fields = launch.creativeFields({ pageId: story.page_id, instagramId: story.instagram_user_id, destination: { type: telegram ? 'telegram' : 'site' } }, c, { imageHash }, u.toString(), name);
+      const newId = await meta.createCreative(token, conn.externalId, fields);
+      before = { creative: old.id }; after = { creative: newId, number: c.number };
+      await meta.setAdCreative(token, logTarget, newId);
+      if (String((await meta.readAdCreative(token, logTarget)).id) !== String(newId)) return fail('Meta прийняла запит, але креатив в оголошенні не змінився. Перевірте в Ads Manager.');
+      await db.ad.update({ where: { id: verdict.ad.id }, data: { creativeId: newId, title: c.headline, body: c.primary, linkUrl: u.toString(), content2PostId: c.id, imageUrl: c.mediaUrl, extUpdatedAt: new Date() } });
+      await db.adSet.update({ where: { id: verdict.adSet.id }, data: { extUpdatedAt: new Date() } });
+    }
+  } catch (e) {
+    return fail(e.name === 'MetaError' ? launch.explain(e) : scrub(e.message));
+  }
+  await logAction(project.id, actor, input.kind, { target: logTarget, before, after, reason: reasonText, status: 'done' });
+  return { status: 'done', message: `Готово: ${target}. Meta перевірить зміну, перші цифри будуть після синхронізації.` };
 }
 
 module.exports = { check, perform, KINDS, NEEDED_LEVEL };

@@ -106,6 +106,16 @@ async function fetchInsights(token, accountId, since, until) {
   });
 }
 
+/** Витрати оголошень у розрізі площадок за період: для кнопки «Аналізувати». */
+async function fetchPlacements(token, accountId, since, until) {
+  const rows = await list(token, `${actId(accountId)}/insights`, { level: 'ad', breakdowns: 'publisher_platform', time_range: { since, until }, limit: 500, fields: 'ad_id,spend,account_currency,impressions,inline_link_clicks,actions' });
+  return rows.map((r) => ({ adExternalId: r.ad_id, platform: r.publisher_platform, spend: Number(r.spend || 0), currency: r.account_currency || 'USD', impressions: Number(r.impressions || 0), linkClicks: Number(r.inline_link_clicks || 0), landingViews: Number((r.actions || []).find((a) => a.action_type === 'landing_page_view')?.value || 0) }));
+}
+
+/** Поточні налаштування групи й креативу оголошення — перед тим як їх міняти. */
+const readTargeting = async (token, adSetId) => (await call(token, String(adSetId), { fields: 'targeting' })).targeting || {};
+const readAdCreative = async (token, adId) => (await call(token, String(adId), { fields: 'creative{id,object_story_spec,url_tags}' })).creative || {};
+
 // ── ЗАПИС. Єдине місце, де платформа щось міняє в кабінеті. Викликати ЛИШЕ з services/actions.js після запобіжників. ──
 async function write(token, objectId, fields) {
   if (!/^\d{5,25}$/.test(String(objectId))) throw new MetaError('Некоректний номер об\'єкта');
@@ -146,6 +156,7 @@ const createAdSet = async (token, accountId, fields) => newId(await post(token, 
 const createCreative = async (token, accountId, fields) => newId(await post(token, `${actId(accountId)}/adcreatives`, fields));
 const createAd = async (token, accountId, fields) => newId(await post(token, `${actId(accountId)}/ads`, { ...fields, status: 'PAUSED' }));
 const setAdCreative = (token, adId, creativeId) => write(token, adId, { creative: JSON.stringify({ creative_id: creativeId }) });
+const setTargeting = (token, adSetId, targeting) => write(token, adSetId, { targeting: JSON.stringify(targeting) });
 
 /** Картинка (байти) → hash, на який посилається креатив. */
 async function uploadImage(token, accountId, buffer) {
@@ -162,4 +173,4 @@ const videoState = async (token, videoId) => { const v = await call(token, Strin
 /** Facebook-сторінки, доступні ключу (щоб не вводити номер вручну). */
 const pages = async (token) => (await list(token, 'me/accounts', { fields: 'id,name', limit: 100 })).map((p) => ({ id: p.id, name: p.name }));
 
-module.exports = { check, fetchStructure, fetchInsights, setStatus, setDailyBudget, readBack, createCampaign, createAdSet, createCreative, createAd, setAdCreative, uploadImage, uploadVideo, videoState, pages, MetaError, VERSION };
+module.exports = { check, fetchStructure, fetchInsights, setStatus, setDailyBudget, readBack, createCampaign, createAdSet, createCreative, createAd, setAdCreative, setTargeting, readTargeting, readAdCreative, fetchPlacements, uploadImage, uploadVideo, videoState, pages, MetaError, VERSION };

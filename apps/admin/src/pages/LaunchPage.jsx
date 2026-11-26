@@ -33,7 +33,7 @@ function Form({ accounts, bundles, creatives, goals, pixelEvents, onSaved }) {
   const d = first?.defaults || {};
   const [f, setF] = useState({
     connectionId: first?.id || '', bundleId: '', name: '', goal: 'clicks', destType: 'telegram', bot: d.bot || '', slug: 'bot-karta-sales', url: d.url || '',
-    dailyBudget: '', countries: 'UA', ageMin: '25', ageMax: '55', advantageAudience: false, audienceNetwork: false,
+    dailyBudget: '', countries: 'UA', ageMin: '25', ageMax: '55', advantageAudience: false, audienceNetwork: false, threads: false,
     pageId: d.pageId || first?.pages?.[0]?.id || '', instagramId: d.instagramId || '', pixelId: d.pixelId || '', pixelEvent: 'LEAD',
   });
   const [picked, setPicked] = useState([]);
@@ -114,7 +114,8 @@ function Form({ accounts, bundles, creatives, goals, pixelEvents, onSaved }) {
           <Field id="l-a2" label="Вік до"><input id="l-a2" className="inp" inputMode="numeric" value={f.advantageAudience ? '65' : f.ageMax} onChange={set('ageMax')} disabled={f.advantageAudience} /></Field>
         </div>
         <label className="flex items-start gap-2 text-sm self-center"><input type="checkbox" className="mt-1" checked={f.advantageAudience} onChange={set('advantageAudience')} /><span>Дозволити Meta розширювати аудиторію<span className="block text-xs text-slate-500">Тоді вік стає підказкою: від не більше 25 і без верхньої межі.</span></span></label>
-        <label className="flex items-start gap-2 text-sm self-center"><input type="checkbox" className="mt-1" checked={f.audienceNetwork} onChange={set('audienceNetwork')} /><span>Показувати в сторонніх додатках (Audience Network)<span className="block text-xs text-slate-500">Зазвичай дає дешеві випадкові кліки. Facebook, Instagram, Messenger і Threads вмикаються завжди.</span></span></label>
+        <label className="flex items-start gap-2 text-sm self-center"><input type="checkbox" className="mt-1" checked={f.audienceNetwork} onChange={set('audienceNetwork')} /><span>Показувати в сторонніх додатках (Audience Network)<span className="block text-xs text-slate-500">Зазвичай дає дешеві випадкові кліки. Facebook, Instagram і Messenger вмикаються завжди.</span></span></label>
+        <label className="flex items-start gap-2 text-sm self-center"><input type="checkbox" className="mt-1" checked={f.threads} onChange={set('threads')} /><span>Показувати в Threads<span className="block text-xs text-slate-500">Лише коли профіль Threads пов'язаний із вашим Instagram, інакше Meta відмовить.</span></span></label>
 
         <Field id="l-page" label="Facebook-сторінка, від якої реклама" error={errs.pageId} hint={account?.pagesError ? `Список сторінок не отримано: ${account.pagesError}` : null}>
           {account?.pages?.length ? (

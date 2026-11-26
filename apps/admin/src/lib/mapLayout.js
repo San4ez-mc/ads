@@ -1,8 +1,9 @@
 // Розкладка карти: зліва креативи в рамках кампаній, далі елементи шляху з кроками, справа продаж.
 // Чиста функція (без React) — щоб її можна було перевіряти окремо.
-export const AD_W = 300; export const AD_H = 520; export const GAP = 24;
+export const AD_W = 300; export const AD_H = 640; export const GAP = 24;
+export const HINT_H = 280; // блок підказок під оголошенням чи елементом шляху (зʼявляється після «Аналізувати»)
 export const STEP_W = 280; export const STEP_H = 170; export const STEP_GAP_X = 90; export const STEP_GAP_Y = 36;
-const FRAME_PAD = 20; const FRAME_HEAD = 64; const SET_HEAD = 34; const EL_HEAD = 76; const COL_GAP = 260;
+const FRAME_PAD = 20; const FRAME_HEAD = 64; const SET_HEAD = 44; const EL_HEAD = 76; const COL_GAP = 260;
 
 export const COLOR = { good: '#34d399', pricey: '#fbbf24', bad: '#f87171', few: '#94a3b8', none: '#94a3b8' };
 
@@ -26,7 +27,9 @@ function prevStep(steps, s) {
   return pool.reduce((a, b) => (b.order > a.order ? b : a));
 }
 
-export function buildMap(data, selected) {
+const hintNode = (id, hints, x, y, w, onAction, extra = {}) => ({ id, type: 'hint', position: { x, y }, draggable: false, selectable: false, data: { hints, onAction }, style: { width: w, height: HINT_H }, ...extra });
+
+export function buildMap(data, selected, advice = null, handlers = {}) {
   const nodes = []; const edges = [];
   const sel = selected && selected.size ? selected : null;
 
@@ -39,14 +42,16 @@ export function buildMap(data, selected) {
     for (const s of c.adSets) {
       const cols = s.ads.length > 1 ? 2 : 1;
       const w = cols * AD_W + (cols - 1) * GAP;
-      children.push({ id: `set:${s.id}`, type: 'setLabel', parentId: frameId, extent: 'parent', draggable: false, selectable: false, position: { x: FRAME_PAD, y: innerY }, data: { name: s.name, dailyBudget: s.dailyBudget, learning: s.learningStage === 'LEARNING', width: w }, style: { width: w, height: SET_HEAD - 8 } });
+      children.push({ id: `set:${s.id}`, type: 'setLabel', parentId: frameId, extent: 'parent', draggable: false, selectable: false, position: { x: FRAME_PAD, y: innerY }, data: { name: s.name, dailyBudget: s.dailyBudget, learning: s.learningStage === 'LEARNING', audience: s.audience?.text, placements: s.placements?.text, width: w }, style: { width: w, height: SET_HEAD - 8 } });
       innerY += SET_HEAD;
+      const rowH = AD_H + GAP + (s.ads.some((a) => advice?.ads[a.externalId]) ? HINT_H + GAP : 0);
       s.ads.forEach((a, i) => {
-        const x = FRAME_PAD + (i % cols) * (AD_W + GAP); const ay = innerY + Math.floor(i / cols) * (AD_H + GAP);
-        children.push({ id: `ad:${a.externalId}`, type: 'ad', parentId: frameId, extent: 'parent', draggable: false, position: { x, y: ay }, data: { ad: a, target: data.target, picked: !!sel && sel.has(a.externalId), dim: !!sel && !sel.has(a.externalId) }, style: { width: AD_W, height: AD_H } });
+        const x = FRAME_PAD + (i % cols) * (AD_W + GAP); const ay = innerY + Math.floor(i / cols) * rowH;
+        children.push({ id: `ad:${a.externalId}`, type: 'ad', parentId: frameId, extent: 'parent', draggable: false, position: { x, y: ay }, data: { ad: a, target: data.target, picked: !!sel && sel.has(a.externalId), dim: !!sel && !sel.has(a.externalId), onEdit: handlers.onEdit }, style: { width: AD_W, height: AD_H } });
+        if (advice?.ads[a.externalId]) children.push(hintNode(`hint:${a.externalId}`, advice.ads[a.externalId], x, ay + AD_H + 12, AD_W, (action) => handlers.onEdit?.(a, action), { parentId: frameId, extent: 'parent' }));
         adPos.set(a.externalId, a);
       });
-      innerY += Math.ceil(s.ads.length / cols) * (AD_H + GAP);
+      innerY += Math.ceil(s.ads.length / cols) * rowH;
       frameW = Math.max(frameW, w);
     }
     const width = frameW + FRAME_PAD * 2; const height = innerY + FRAME_PAD - GAP;
@@ -101,7 +106,9 @@ export function buildMap(data, selected) {
       if (s.isSale) { saleStepIds.push(id); salePeople += people; saleAmount += stepAmount(s, sel); }
     }
     if (first) firstStepId.set(e.key, `step:${e.key}|${first.key}`);
-    elBottom = Math.max(elBottom, top + height);
+    const eh = advice?.elements[e.key];
+    if (eh) nodes.push(hintNode(`hint:${e.key}`, eh, x, top + height + 16, Math.min(width, 520), null));
+    elBottom = Math.max(elBottom, top + height + (eh ? HINT_H + 16 : 0));
     x += width + 200;
   }
 
@@ -192,7 +199,7 @@ function frameElement(nodes, e, x, y, pre) {
   return { frameId, width, height, edges };
 }
 
-export function buildPlanMap(data) {
+export function buildPlanMap(data, advice = null, handlers = {}) {
   const nodes = []; const edges = [];
   let y = 0;
   for (const lane of data.lanes) {
@@ -208,11 +215,13 @@ export function buildPlanMap(data) {
     if (!left.length) left.push({ kind: 'add' });
     const cols = left.length > 2 ? 2 : 1;
     const rowsN = Math.ceil(left.length / cols);
-    const cellH = lane.ads.length ? AD_H + GAP : PLAN_CARD_H + GAP;
+    const adHints = lane.ads.some((a) => advice?.ads[a.externalId]);
+    const cellH = (lane.ads.length ? AD_H + GAP : PLAN_CARD_H + GAP) + (adHints ? HINT_H + GAP : 0);
     const leftNodes = [];
     left.forEach((it, i) => {
       const cx = (i % cols) * (PLAN_CARD_W + GAP); const cy = bodyY + Math.floor(i / cols) * cellH;
-      if (it.kind === 'ad') { const id = `${pre}ad:${it.a.externalId}`; nodes.push({ id, type: 'ad', position: { x: cx, y: cy }, draggable: false, data: { ad: it.a, target: data.target, picked: false, dim: false }, style: { width: AD_W, height: AD_H } }); leftNodes.push(id); }
+      if (it.kind === 'ad') { const id = `${pre}ad:${it.a.externalId}`; nodes.push({ id, type: 'ad', position: { x: cx, y: cy }, draggable: false, data: { ad: it.a, target: data.target, picked: false, dim: false, onEdit: handlers.onEdit }, style: { width: AD_W, height: AD_H } }); leftNodes.push(id);
+        if (advice?.ads[it.a.externalId]) nodes.push(hintNode(`${pre}hint:${it.a.externalId}`, advice.ads[it.a.externalId], cx, cy + AD_H + 12, AD_W, (action) => handlers.onEdit?.(it.a, action))); }
       else if (it.kind === 'planned') { const id = `${pre}pc:${it.c.id}`; nodes.push({ id, type: 'planned', position: { x: cx, y: cy }, draggable: false, selectable: false, data: { c: it.c }, style: { width: PLAN_CARD_W, height: PLAN_CARD_H } }); leftNodes.push(id); }
       else { const id = `${pre}add`; nodes.push({ id, type: 'addCreative', position: { x: cx, y: cy }, draggable: false, selectable: false, data: { bundleId: lane.bundle.id, content: data.contentConnected }, style: { width: PLAN_CARD_W, height: 220 } }); leftNodes.push(id); }
     });
@@ -226,13 +235,20 @@ export function buildPlanMap(data) {
       let id; let w; let h;
       if (it.kind === 'element') { const r = frameElement(nodes, it.element, x, bodyY, pre); id = r.frameId; w = r.width; h = r.height; edges.push(...r.edges); }
       else { id = `${pre}note:${i}`; w = 300; h = 150; nodes.push({ id, type: 'note', position: { x, y: bodyY }, draggable: false, selectable: false, data: { note: it.note }, style: { width: w, height: h } }); }
-      pathNodes.push({ id, x, w, h });
+      // Підказки під елементом шляху.
+      const eh = it.kind === 'element' ? advice?.elements[it.element.key] : null;
+      let hintId = null; const frameH = h;
+      if (eh) { hintId = `${pre}hint:el:${it.element.key}`; nodes.push(hintNode(hintId, eh, x, bodyY, Math.min(w, 520), null)); h += HINT_H + 16; }
+      pathNodes.push({ id, x, w, h, hintId, frameH });
       if (prevId) edges.push({ id: `${pre}p:${prevId}>${id}`, source: prevId, target: id, style: { stroke: '#8b5cf6', strokeWidth: 2 }, animated: true });
       prevId = id; x += w + PATH_GAP; maxH = Math.max(maxH, h);
     }
     // Вертикальне вирівнювання шляху по центру доріжки.
     const laneBody = Math.max(leftH, maxH, 320);
-    for (const pn of pathNodes) { const n = nodes.find((q) => q.id === pn.id); n.position.y = bodyY + (laneBody - pn.h) / 2; }
+    for (const pn of pathNodes) {
+      const n = nodes.find((q) => q.id === pn.id); n.position.y = bodyY + (laneBody - pn.h) / 2;
+      if (pn.hintId) nodes.find((q) => q.id === pn.hintId).position.y = n.position.y + pn.frameH + 16;
+    }
 
     // 3) Продаж зліва направо останнім.
     const saleId = `${pre}sale`;
