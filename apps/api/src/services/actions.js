@@ -112,9 +112,9 @@ async function check(project, input, { actor = 'user:' } = {}) {
         const text = launch.parseCreativeText(c.text);
         if (!text) reasons.push(`Креатив №${c.number}: не вдалося прочитати текст і заголовок`);
         let media = null; try { media = new URL(c.mediaUrl); } catch { /* нема файла */ }
-        if (!media || media.origin !== got.origin) reasons.push(`Креатив №${c.number}: нема картинки з контент-платформи`);
+        if (!media || !got.origins.includes(media.origin)) reasons.push(`Креатив №${c.number}: нема картинки з контент-платформи`);
         else if (c.mediaType !== 'image') reasons.push('Замінити поки можна лише на картинку; з відео створюйте нову кампанію на сторінці «Запуск»');
-        if (text) { creative = { id: c.id, number: c.number, mediaUrl: c.mediaUrl, origin: got.origin, ...text }; notes.push(`Новий креатив №${c.number}: «${text.headline}»`); }
+        if (text) { creative = { id: c.id, number: c.number, mediaUrl: c.mediaUrl, origins: got.origins, ...text }; notes.push(`Новий креатив №${c.number}: «${text.headline}»`); }
       }
     } catch (e) { reasons.push(`(4) Не вдалося перевірити креатив: ${scrub(e.message)}`); }
   }
@@ -215,7 +215,7 @@ async function change(project, input, verdict, { actor, target, logTarget, reaso
       // Мітка оголошення в посиланні: щоб візити й діалоги привʼязувались саме до нього.
       if (telegram) { const start = (u.searchParams.get('start') || '').replace(/__[ac][A-Za-z0-9]+$/, ''); if (start) u.searchParams.set('start', `${start}__a${logTarget}`); } else u.searchParams.set('ad_id', logTarget);
       const c = verdict.creative; const name = `№${c.number} · ${c.headline}`.slice(0, 240);
-      const imageHash = await meta.uploadImage(token, conn.externalId, await launch.download(c.mediaUrl, c.origin));
+      const imageHash = await meta.uploadImage(token, conn.externalId, await launch.download(c.mediaUrl, c.origins));
       const fields = launch.creativeFields({ pageId: story.page_id, instagramId: story.instagram_user_id, destination: { type: telegram ? 'telegram' : 'site' } }, c, { imageHash }, u.toString(), name);
       const newId = await meta.createCreative(token, conn.externalId, fields);
       before = { creative: old.id }; after = { creative: newId, number: c.number };

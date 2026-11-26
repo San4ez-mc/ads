@@ -98,7 +98,9 @@ async function contentCreatives(project) {
   const conn = await db.connection.findFirst({ where: { projectId: project.id, channel: 'content2', secretRead: { not: null } } });
   const pid = conn && (conn.config?.projectId || project.content2ProjectId);
   if (!conn || !pid) throw new Error('Контент-платформу не підключено');
-  return { origin: new URL(conn.externalId).origin, creatives: await c2.creatives(conn.externalId, decrypt(conn.secretRead), pid, 200) };
+  // Звертаємось до контент-платформи, можливо, по внутрішній адресі, а файли вона віддає з публічної: дозволені обидві, і лише вони.
+  const origins = [new URL(conn.externalId).origin, new URL(process.env.CONTENT2_ORIGIN || 'https://content2.fineko.space').origin];
+  return { origins, creatives: await c2.creatives(conn.externalId, decrypt(conn.secretRead), pid, 200) };
 }
 
 const currencyOf = (conn) => conn?.config?.check?.currency || null;
@@ -153,9 +155,9 @@ async function check(project, launch, { actor = 'user:' } = {}) {
   if (!bundle) reasons.push('Зв\'язку не знайдено');
   else if (!bundle.code) reasons.push('У зв\'язки нема коду: задайте його в «Зв\'язках», інакше цифри не привʼяжуться');
 
-  const creatives = []; let origin = null;
+  const creatives = []; let origins = [];
   try {
-    const got = await contentCreatives(project); origin = got.origin;
+    const got = await contentCreatives(project); origins = got.origins;
     for (const id of spec.creativeIds) {
       const c = got.creatives.find((x) => x.id === id);
       if (!c) { reasons.push('Один із креативів зник із контент-платформи'); continue; }
@@ -166,7 +168,7 @@ async function check(project, launch, { actor = 'user:' } = {}) {
       const text = parseCreativeText(c.text);
       if (!text) reasons.push(`${label}: не вдалося прочитати основний текст і заголовок`);
       let media = null; try { media = new URL(c.mediaUrl); } catch { /* нема файла */ }
-      if (!media || media.origin !== origin) reasons.push(`${label}: нема картинки чи відео з контент-платформи`);
+      if (!media || !origins.includes(media.origin)) reasons.push(`${label}: нема картинки чи відео з контент-платформи`);
       if (text) creatives.push({ id: c.id, number: c.number, mediaUrl: c.mediaUrl, mediaType: c.mediaType, ...text });
     }
   } catch (e) { reasons.push(`(4) Не вдалося перевірити креативи: ${scrub(e.message)}`); }
@@ -191,7 +193,7 @@ async function check(project, launch, { actor = 'user:' } = {}) {
   if (spec.creativeIds.length > 3) notes.push('При невеликому бюджеті краще 2–3 оголошення: інакше кожне отримає копійки');
   notes.push(`Бюджет: ${spec.dailyBudget} ${currency || ''} на добу. Усе буде створено вимкненим.`);
 
-  return { ok: reasons.length === 0, reasons, notes, dryRun: !!project.dryRun, conn, bundle, creatives, origin };
+  return { ok: reasons.length === 0, reasons, notes, dryRun: !!project.dryRun, conn, bundle, creatives, origins };
 }
 
 const campaignName = (bundle, spec) => `[${bundle.code}] ${spec.name || bundle.name}`.slice(0, 240);
@@ -219,8 +221,8 @@ function creativeFields(spec, creative, media, link, name) {
   return { name, object_story_spec: story, ...(spec.destination.type === 'site' ? { url_tags: 'placement={{placement}}' } : {}) };
 }
 
-async function download(url, origin) {
-  if (new URL(url).origin !== origin) throw new Error('Файл креативу не з контент-платформи');
+async function download(url, origins) {
+  if (!origins.includes(new URL(url).origin)) throw new Error('Файл креативу не з контент-платформи');
   const res = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: 'error' });
   if (!res.ok) throw new Error(`Не вдалося взяти картинку креативу (HTTP ${res.status})`);
   const buf = Buffer.from(await res.arrayBuffer());
@@ -240,7 +242,7 @@ function explain(e) {
 
 /** Створює в кабінеті все, чого ще нема. Кожен крок одразу записується, тож повтор продовжує з місця зупинки без дублів. */
 async function build(project, launch, verdict, actor) {
-  const { conn, bundle, creatives, origin } = verdict;
+  const { conn, bundle, creatives, origins } = verdict;
   const spec = launch.spec; const goal = GOALS[spec.goal]; const account = conn.externalId;
   const ids = JSON.parse(JSON.stringify(launch.ids || {})); ids.items ||= {};
   const save = (extra = {}) => db.launch.update({ where: { id: launch.id }, data: { ids, updatedAt: new Date(), ...extra } });
@@ -271,7 +273,7 @@ async function build(project, launch, verdict, actor) {
           if (v.state === 'error') { delete item.videoId; throw new Error(`Meta не змогла обробити відео креативу №${c.number}`); }
           if (v.state !== 'ready' || !v.picture) throw new Error(`Meta ще обробляє відео креативу №${c.number}. Натисніть «Продовжити» за кілька хвилин.`);
           item.media = { videoId: item.videoId, picture: v.picture };
-        } else item.media = { imageHash: await meta.uploadImage(token, account, await download(c.mediaUrl, origin)) };
+        } else item.media = { imageHash: await meta.uploadImage(token, account, await download(c.mediaUrl, origins)) };
         await save();
       }
       if (!item.creative) { item.creative = await meta.createCreative(token, account, creativeFields(spec, c, item.media, adLink(spec, bundle, c, { campaign: ids.campaign, adSet: ids.adSet }), adName)); await save(); }

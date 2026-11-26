@@ -20,6 +20,7 @@ const creatives = () => [
   { id: 'img', number: 11, status: 'scheduled', text: adText(), mediaUrl: `${c2Url}/uploads/a.png`, mediaType: 'image', violations: null },
   { id: 'vid', number: 12, status: 'scheduled', text: adText('Дізнатися більше'), mediaUrl: `${c2Url}/uploads/b.mp4`, mediaType: 'video', violations: null },
   { id: 'bad', number: 13, status: 'draft', text: adText(), mediaUrl: `${c2Url}/uploads/c.png`, mediaType: 'image', violations: ['плашка «для кого» 52 символів (макс 45)'] },
+  { id: 'public', number: 15, status: 'scheduled', text: adText(), mediaUrl: 'https://content2.fineko.space/uploads/p.png', mediaType: 'image', violations: null },
   { id: 'foreign', number: 14, status: 'scheduled', text: adText(), mediaUrl: 'http://169.254.169.254/latest', mediaType: 'image', violations: null },
 ];
 
@@ -90,6 +91,11 @@ test('запобіжники: порушення правил (4), чужий ф
   const text = r.reasons.join(' | ');
   for (const part of ['(15)', '(4) Креатив №13', 'Креатив №14: нема картинки', '(10)']) assert.ok(text.includes(part), `${part} у: ${text}`);
   assert.strictEqual(posts().length, 0);
+});
+
+test('картинка з публічної адреси контент-платформи приймається, навіть коли звертаємось по внутрішній', async () => {
+  const v = await launch.check(project, await draft({ creativeIds: ['public'] }), { actor: 'user:1' });
+  assert.ok(v.ok, v.reasons.join(' | '));
 });
 
 test('режим «проба» (16): у кабінет нічого не пишеться', async () => {
