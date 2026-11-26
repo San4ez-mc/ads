@@ -43,7 +43,6 @@ function checkAdText({ primary, headline, description } = {}) {
   const caps = (all.match(new RegExp(`${L0}[А-ЯІЇЄҐA-Z]{4,}${L1}`, 'gu')) || []).filter((w) => !CAPS_OK.test(w));
   if (caps.length >= 2) out.push(`слова великими літерами (${caps.slice(0, 3).join(', ')})`);
   if (/[!?]{2,}/.test(all) || (all.match(/!/g) || []).length > 1) out.push('зайві знаки оклику чи питання');
-  if ((all.match(/\p{Extended_Pictographic}/gu) || []).length > 3) out.push('забагато емодзі');
   return out;
 }
 
