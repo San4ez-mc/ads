@@ -48,7 +48,9 @@ const ACCOUNT_STATUS = { 1: 'активний', 2: 'вимкнений', 3: 'б�
 
 /** Перевірка підключення: чи ключ живий, чи бачить кабінет, які права має. Повертає людський підсумок. */
 async function check(token, accountId) {
-  const acc = await call(token, actId(accountId), { fields: 'name,account_status,disable_reason,currency,timezone_name,amount_spent,spend_cap,business{id,name}' });
+  const acc = await call(token, actId(accountId), { fields: 'name,account_status,disable_reason,currency,timezone_name,amount_spent,spend_cap' });
+  // Назва бізнес-портфеля — лише довідка і вимагає окремого дозволу business_management: без нього підключення теж працює.
+  acc.business = await call(token, actId(accountId), { fields: 'business{id,name}' }).then((r) => r.business, () => null);
   let scopes = []; let tokenType = null; let expiresAt = null;
   try {
     const dbg = await call(token, 'debug_token', { input_token: token });

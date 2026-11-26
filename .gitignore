@@ -4,3 +4,5 @@ public/admin/
 *.log
 .DS_Store
 .dev-user.json
+# Ключі додатка Meta та інші секрети в локальних файлах — ніколи в git.
+fb app*
