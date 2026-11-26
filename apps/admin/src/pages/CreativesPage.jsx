@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { api } from '../api/client';
 import { CreativesMapView } from './MapPage';
+import CreativeNote from '../components/CreativeNote';
 
 const STATUS = { draft: 'чернетка', scheduled: 'заплановано', published: 'у роботі', archived: 'в архіві' };
 const GEN = { pending: 'ще створюється', processing: 'створюється', done: 'готово', failed: 'помилка' };
@@ -64,6 +65,8 @@ function Order({ bundles, wishes, onDone }) {
 }
 
 export default function CreativesPage() {
+  const [notes, setNotes] = useState({});
+  useEffect(() => { api.notes().then((d) => setNotes(d.notes)).catch(() => {}); }, []);
   const [params, setParams] = useSearchParams();
   const asMap = params.get('view') === 'map';
   const [list, setList] = useState(null);
@@ -98,6 +101,7 @@ export default function CreativesPage() {
                 {c.hook && <div className="text-sm font-medium leading-snug">{c.hook}</div>}
                 {c.text && <div className="text-xs text-slate-400 line-clamp-3">{c.text}</div>}
                 {c.persona && <div className="text-[11px] text-brand-light">{c.persona.name}</div>}
+                <CreativeNote noteKey={c.id} text={notes[c.id]} />
               </div>
             </article>
           ))}

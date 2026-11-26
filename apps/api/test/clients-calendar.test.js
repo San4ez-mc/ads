@@ -123,6 +123,23 @@ test('оплати без клієнта: оплата з сайту → клі�
   assert.strictEqual(x1.sales, 1, 'дві оплати однієї людини — один клієнт');
 });
 
+test('результат зустрічі: «не прийшли» й «відмова» з причиною стають кроками; записи без позначки — серед кандидатів', async () => {
+  const cands = (await call('GET', '/api/clients/candidates')).json.data.candidates;
+  const booking = cands.find((c) => c.kind === 'booking');
+  assert.ok(booking, 'запис на зустріч видно, щоб відмітити результат');
+  const made = await call('POST', '/api/clients', { label: 'Запис', fromEventId: booking.eventId });
+  const id = made.json.data.id;
+  await call('PATCH', `/api/clients/${id}`, { outcome: 'no_show' });
+  assert.deepStrictEqual([(await events({ stepKey: 'no_show' })).length, (await events({ elementType: 'manual', stepKey: 'done', personKey: booking.personKey })).length], [1, 0]);
+  await call('PATCH', `/api/clients/${id}`, { outcome: 'refused', refusalReason: 'Дорого' });
+  const row = await db.client.findUnique({ where: { id } });
+  assert.deepStrictEqual([row.outcome, row.refusalReason, row.consultDone], ['refused', 'Дорого', true]);
+  assert.deepStrictEqual([(await events({ stepKey: 'refused' })).length, (await events({ stepKey: 'no_show' })).length], [1, 0]);
+  assert.strictEqual((await call('PATCH', `/api/clients/${id}`, { outcome: 'bogus' })).status, 400);
+  await call('DELETE', `/api/clients/${id}`);
+  assert.strictEqual((await events({ stepKey: 'refused' })).length, 0);
+});
+
 test('видалення клієнта прибирає його події; чужі події не чіпає', async () => {
   const list = (await call('GET', '/api/clients')).json.data;
   const target = list.clients.find((c) => c.label === 'Оля (інста)');

@@ -49,6 +49,7 @@ model Project {
   adviceLogs  AdviceLog[]
   launches    Launch[]
   experiments Experiment[]
+  creativeNotes CreativeNote[]
 
   @@map("projects")
 }
@@ -356,6 +357,9 @@ model Client {
   adExtId     String?  @map("ad_ext_id")
   consultDone Boolean? @map("consult_done")
   consultAt   DateTime? @map("consult_at")
+  /// Чим закінчилась зустріч: came | no_show | thinking | refused (покупка — це продажі нижче).
+  outcome       String?
+  refusalReason String?  @map("refusal_reason") @db.Text
   /// Людина з подій сайту/бота/календаря, яку власник позначив клієнтом (без імен: лише ключ події).
   personKey   String?  @map("person_key")
   /// Етап шляху Instagram-повідомлень: wrote | answered | offer | paid.
@@ -368,6 +372,21 @@ model Client {
 
   @@index([projectId])
   @@map("clients")
+}
+
+// Коментар власника біля креативу (яких людей приводить, що помітили). Ключ — креатив контент-платформи
+// або «ad:<номер>» для оголошення, зробленого прямо в кабінеті.
+model CreativeNote {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  key       String
+  text      String   @db.Text
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@map("creative_notes")
 }
 
 model ClientSale {

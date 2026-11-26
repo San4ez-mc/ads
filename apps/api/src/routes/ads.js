@@ -57,6 +57,7 @@ async function adRows(project, p, { onlyActive } = {}) {
       campaign: a.campaign, adSet: { id: a.adSet.id, name: a.adSet.name, externalId: a.adSet.externalId, dailyBudget: a.adSet.dailyBudget === null ? null : Number(a.adSet.dailyBudget), learningStage: a.adSet.learningStage, audience: describe.audience(a.adSet.targeting), placements: describe.placements(a.adSet.targeting) },
       creative: { title: a.title, body: a.body, imageUrl: a.imageUrl, thumbnailUrl: a.thumbnailUrl, videoId: a.videoId, linkUrl: a.linkUrl, cta: a.cta, previewUrl: a.previewUrl },
       createdAt: a.extCreatedAt,
+      creativeKey: a.content2PostId || `ad:${a.externalId}`,
       spend: round2(m.spendUah), impressions: m.impressions, clicks: m.clicks, linkClicks: m.linkClicks,
       cpc: m.linkClicks ? round2(m.spendUah / m.linkClicks) : null, ctr: m.impressions ? round2((m.linkClicks / m.impressions) * 100) : null,
       steps: f.steps, sales: f.sales, revenue: round2(f.revenue), upsellRevenue: round2(f.upsellRevenue), upsellCount: f.upsellCount, saleCost: f.sales ? round2(m.spendUah / f.sales) : null,

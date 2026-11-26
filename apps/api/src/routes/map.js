@@ -70,13 +70,19 @@ async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
     return byDomain.get(host(a.creative.linkUrl)) || null;
   };
 
+  // Коментарі біля креативів: за креативом контент-платформи (зокрема створеним через «Запуск») або за самим оголошенням.
+  const [noteRows, launches] = await Promise.all([db.creativeNote.findMany({ where: { projectId: project.id } }), db.launch.findMany({ where: { projectId: project.id }, select: { ids: true } })]);
+  const notes = new Map(noteRows.map((n) => [n.key, n.text]));
+  const launched = new Map(launches.flatMap((l) => Object.entries(l.ids?.items || {}).filter(([, i]) => i.ad).map(([creativeId, i]) => [i.ad, creativeId])));
+  const noteOf = (a) => { const key = launched.get(a.externalId) || a.creativeKey; return { key, text: notes.get(key) || notes.get(`ad:${a.externalId}`) || '' }; };
+
   const camps = new Map();
   for (const a of rows) {
     if (!camps.has(a.campaign.id)) camps.set(a.campaign.id, { id: a.campaign.id, name: a.campaign.name, spend: 0, sales: 0, revenue: 0, adSets: new Map() });
     const c = camps.get(a.campaign.id);
     if (!c.adSets.has(a.adSet.id)) c.adSets.set(a.adSet.id, { ...a.adSet, ads: [] });
     const v = verdict({ spend: a.spend, sales: a.sales, target, rules });
-    c.adSets.get(a.adSet.id).ads.push({ id: a.id, adSetId: a.adSet.id, adSetName: a.adSet.name, adSetBudget: a.adSet.dailyBudget, audience: a.adSet.audience, placements: a.adSet.placements, externalId: a.externalId, name: a.name, effectiveStatus: a.effectiveStatus, running: a.running, creative: a.creative, spend: a.spend, impressions: a.impressions, linkClicks: a.linkClicks, cpc: a.cpc, ctr: a.ctr, sales: a.sales, revenue: a.revenue, upsellRevenue: a.upsellRevenue, upsellCount: a.upsellCount, saleCost: a.saleCost, verdict: v, verdictLabel: LABEL[v], entry: entryOf(a) });
+    c.adSets.get(a.adSet.id).ads.push({ id: a.id, adSetId: a.adSet.id, adSetName: a.adSet.name, adSetBudget: a.adSet.dailyBudget, audience: a.adSet.audience, placements: a.adSet.placements, externalId: a.externalId, name: a.name, effectiveStatus: a.effectiveStatus, running: a.running, creative: a.creative, spend: a.spend, impressions: a.impressions, linkClicks: a.linkClicks, cpc: a.cpc, ctr: a.ctr, sales: a.sales, revenue: a.revenue, upsellRevenue: a.upsellRevenue, upsellCount: a.upsellCount, saleCost: a.saleCost, verdict: v, verdictLabel: LABEL[v], entry: entryOf(a), note: noteOf(a) });
     c.spend += a.spend; c.sales += a.sales; c.revenue += a.revenue;
   }
   const campaigns = [...camps.values()].map((c) => ({ id: c.id, name: c.name, spend: round2(c.spend), sales: c.sales, revenue: round2(c.revenue), saleCost: c.sales ? round2(c.spend / c.sales) : null, verdict: verdict({ spend: c.spend, sales: c.sales, target, rules }), adSets: [...c.adSets.values()] })).sort((a, b) => b.spend - a.spend);

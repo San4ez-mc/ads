@@ -6,7 +6,7 @@ const { db } = require('@ads/db');
 const IG_STAGES = ['wrote', 'answered', 'offer', 'paid'];
 const MANUAL = [
   // [тип, код, назва, кроки: ключ, назва, порядок, продаж?, сума за замовчуванням]
-  ['manual', 'consult', 'Консультація і продаж далі (позначаєте вручну)', [['done', 'Консультація відбулась', 1, false, null], ['upsell', 'Купив дорожчий продукт', 2, false, null]]],
+  ['manual', 'consult', 'Консультація і продаж далі (позначаєте вручну)', [['done', 'Консультація відбулась', 1, false, null], ['upsell', 'Купив дорожчий продукт', 2, false, null], ['no_show', 'Не було на зустрічі', 3, false, null], ['refused', 'Відмова після зустрічі', 4, false, null]]],
   ['instagram', 'direct', 'Повідомлення в Instagram (вручну)', [['wrote', 'Написав у дірект', 1, false, null], ['answered', 'Отримав відповідь', 2, false, null], ['offer', 'Отримав пропозицію консультації', 3, false, null], ['paid', 'Оплатив', 4, true, null]]],
 ];
 
@@ -38,6 +38,11 @@ async function syncClientEvents(clientId) {
   // Консультація
   if (c.consultDone) await putEvent(c, 'manual', 'consult', 'done', `client:${c.id}:done`, c.consultAt || new Date(), null);
   else await dropEvent(c, 'manual', 'consult', `client:${c.id}:done`);
+  // Чим закінчилась зустріч: «не було» й «відмова» — окремі кроки, щоб їх було видно на карті.
+  for (const k of ['no_show', 'refused']) {
+    if (c.outcome === k) await putEvent(c, 'manual', 'consult', k, `client:${c.id}:${k}`, c.consultAt || new Date(), null);
+    else await dropEvent(c, 'manual', 'consult', `client:${c.id}:${k}`);
+  }
   // Дорожчі продажі: по події на кожен продаж із сумою
   const keep = new Set(c.sales.map((s) => `client:${c.id}:sale:${s.id}`));
   for (const s of c.sales) await putEvent(c, 'manual', 'consult', 'upsell', `client:${c.id}:sale:${s.id}`, s.soldAt, Number(s.amount));

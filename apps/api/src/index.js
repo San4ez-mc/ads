@@ -26,6 +26,7 @@ const planRouter = require('./routes/plan');
 const launchesRouter = require('./routes/launches');
 const experimentsRouter = require('./routes/experiments');
 const sitesRouter = require('./routes/sites');
+const notesRouter = require('./routes/notes');
 
 const app = express();
 const PORT = Number(process.env.PORT || 4900);
@@ -57,7 +58,7 @@ app.get('/health', asyncHandler(async (req, res) => {
 
 app.use(authSsoRouter);
 app.use('/api', projects.admin);
-app.use('/api', resolveProject, projects.scoped, connectionsRouter, adsRouter, mapRouter, bundlesRouter, adviceRouter, creativesRouter, actionsRouter, clientsRouter, planRouter, launchesRouter, experimentsRouter, sitesRouter);
+app.use('/api', resolveProject, projects.scoped, connectionsRouter, adsRouter, mapRouter, bundlesRouter, adviceRouter, creativesRouter, actionsRouter, clientsRouter, planRouter, launchesRouter, experimentsRouter, sitesRouter, notesRouter);
 
 // Продакшн: зібрана адмінка (npm run build:admin → public/admin) роздається цим же процесом.
 const ADMIN_DIST = path.join(__dirname, '../../../public/admin');

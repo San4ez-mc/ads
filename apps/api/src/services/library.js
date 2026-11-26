@@ -8,11 +8,13 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' 
 const SHOWN = ['ACTIVE', 'PAUSED', 'IN_PROCESS', 'PENDING_REVIEW', 'DISAPPROVED', 'WITH_ISSUES', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED'];
 
 async function library(project) {
-  const [ads, launches, bundles] = await Promise.all([
+  const [ads, launches, bundles, noteRows] = await Promise.all([
     db.ad.findMany({ where: { projectId: project.id, effectiveStatus: { in: SHOWN }, campaign: { effectiveStatus: { in: ['ACTIVE', 'IN_PROCESS', 'WITH_ISSUES'] } } }, include: { campaign: { select: { name: true } }, adSet: { select: { name: true } } } }),
     db.launch.findMany({ where: { projectId: project.id } }),
     db.bundle.findMany({ where: { projectId: project.id } }),
+    db.creativeNote.findMany({ where: { projectId: project.id } }),
   ]);
+  const notes = new Map(noteRows.map((n) => [n.key, n.text]));
   let creatives = []; let error = null;
   try { creatives = (await contentCreatives(project)).creatives; } catch (e) { error = scrub(e.message); }
   const byLaunch = new Map(launches.flatMap((l) => Object.entries(l.ids?.items || {}).filter(([, i]) => i.ad).map(([creativeId, i]) => [i.ad, creativeId])));
@@ -39,6 +41,7 @@ async function library(project) {
   // Спершу те, що вже в рекламі, далі новіші.
   items.sort((x, y) => (y.ads.length ? 1 : 0) - (x.ads.length ? 1 : 0) || (y.number || 0) - (x.number || 0));
   const sets = await db.adSet.findMany({ where: { projectId: project.id, campaign: { effectiveStatus: 'ACTIVE' } }, include: { campaign: { select: { name: true, effectiveStatus: true, extCreatedAt: true } }, ads: { select: { linkUrl: true }, take: 1 } }, orderBy: { extCreatedAt: 'desc' }, take: 30 });
+  for (const i of items) i.note = notes.get(i.id) || i.ads.map((a) => notes.get(`ad:${a.externalId}`)).find(Boolean) || '';
   return { items, error, adSets: sets.map((s) => ({ id: s.id, name: s.name, campaign: s.campaign.name, hasLink: !!s.ads[0]?.linkUrl })) };
 }
 

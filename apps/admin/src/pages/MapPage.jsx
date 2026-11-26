@@ -7,6 +7,7 @@ import { api, fmt } from '../api/client';
 import { buildMap, buildPlanMap, buildCreativeMap, COLOR } from '../lib/mapLayout';
 import { EditAdModal, HintNode, HintList } from '../components/MapActions';
 import { CreativeShelf, ChangesBar, DRAG, useChanges } from '../components/MapShelf';
+import CreativeNote from '../components/CreativeNote';
 import { useAuthStore } from '../stores/authStore';
 
 const PERIODS = [{ d: 1, label: 'Сьогодні' }, { d: 7, label: '7 днів' }, { d: 14, label: '14 днів' }, { d: 30, label: '30 днів' }];
@@ -34,10 +35,10 @@ function AdNode({ data }) {
         </div>
       ) : (
         <>
-          <div className="h-[375px] bg-slate-950 flex items-center justify-center shrink-0">
+          <div className="flex-1 min-h-0 overflow-hidden bg-slate-950 flex items-center justify-center">
             {img ? <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false} className="max-h-full max-w-full object-contain" /> : <div className="px-6 text-center text-sm text-slate-400 leading-relaxed">{a.creative.body || 'Креатив без зображення'}</div>}
           </div>
-          <div className="p-3 flex-1 flex flex-col gap-2 min-h-0">
+          <div className="p-3 shrink-0 flex flex-col gap-2">
             <div className="flex items-start gap-2">
               <div className="text-sm font-medium leading-snug line-clamp-2 flex-1">{a.name}</div>
               <Chip v={a.verdict}>{a.verdictLabel}</Chip>
@@ -52,6 +53,7 @@ function AdNode({ data }) {
               <div className="line-clamp-2 mt-0.5" title={a.placements?.text}><span className="text-slate-500">Де: </span><span className="text-slate-300">{a.placements?.text || 'немає даних'}</span></div>
             </div>
             <div className="text-[11px] text-slate-500">{STATUS[a.effectiveStatus] || a.effectiveStatus || '—'}</div>
+            {a.note && <div className="nodrag nopan" style={{ pointerEvents: 'all' }}><CreativeNote noteKey={a.note.key} text={a.note.text} compact /></div>}
             {data.onEdit && (
               <div className="flex gap-2">
                 <button type="button" style={{ pointerEvents: 'all' }} className="nodrag nopan btn-primary !py-1.5 flex-1" onClick={(e) => { e.stopPropagation(); data.onEdit(a); }}>Внести правки</button>

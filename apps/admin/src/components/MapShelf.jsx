@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { create } from 'zustand';
 import { api } from '../api/client';
+import CreativeNote from './CreativeNote';
 
 export const DRAG = 'application/x-fineko-creative';
 
@@ -40,6 +41,7 @@ export function CreativeShelf({ data, onAdd }) {
               <div className="line-clamp-2 leading-snug">{c.headline}</div>
               {c.ads.length > 0 && <div className="text-slate-500 truncate" title={c.ads.map((a) => `${a.campaign} · ${a.name}`).join('\n')}>{c.ads.some((a) => a.status === 'ACTIVE') ? 'крутиться' : 'не крутиться'} · {c.ads[0].campaign}</div>}
               {c.problem && <div className="text-red-300 line-clamp-2" title={c.problem}>{c.problem}</div>}
+              <CreativeNote noteKey={c.id} text={c.note} />
               {onAdd && c.usable && (adding === c.id ? (
                 <select aria-label="У яку групу додати" className="inp !py-1 text-xs" defaultValue="" onChange={(e) => { const s = data.adSets.find((x) => x.id === e.target.value); if (s) onAdd(c, s); setAdding(''); }}>
                   <option value="">у яку групу…</option>

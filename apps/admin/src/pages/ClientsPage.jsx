@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { api, fmt } from '../api/client';
 
 const SRC = { site: 'Сайт', flows: 'Бот', calendar: 'Календар', instagram: 'Instagram', manual: 'Вручну' };
+const OUTCOMES = [['came', 'Зустріч була'], ['no_show', 'Не прийшли'], ['thinking', 'Думають'], ['refused', 'Відмова']];
 const STAGES = [['wrote', 'Написав'], ['answered', 'Отримав відповідь'], ['offer', 'Отримав пропозицію'], ['paid', 'Оплатив консультацію']];
 
 function SaleForm({ client, onDone }) {
@@ -30,6 +31,25 @@ function SaleForm({ client, onDone }) {
   );
 }
 
+/** Чим закінчилась зустріч; покупку записують продажем нижче. */
+function Outcome({ c, run }) {
+  const [reason, setReason] = useState(c.refusalReason || '');
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Результат зустрічі">
+        <span className="text-xs text-slate-500 mr-1">Зустріч:</span>
+        {OUTCOMES.map(([k, label]) => <button key={k} type="button" aria-pressed={c.outcome === k} className={clsx('btn !py-1 text-xs', c.outcome === k ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => run(() => api.patchClient(c.id, { outcome: c.outcome === k ? null : k }))}>{label}</button>)}
+      </div>
+      {c.outcome === 'refused' && (
+        <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); run(() => api.patchClient(c.id, { refusalReason: reason })); }}>
+          <input aria-label="Чому відмовились" className="inp !w-80" placeholder="Чому відмовились" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <button className="btn-ghost">{reason.trim() === (c.refusalReason || '') ? 'Збережено' : 'Зберегти причину'}</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function ClientCard({ c, onChange }) {
   const [open, setOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -40,7 +60,7 @@ function ClientCard({ c, onChange }) {
       <div className="flex flex-wrap items-center gap-2 cursor-pointer" onClick={() => setOpen(!open)}>
         <h3 className="text-sm font-medium">{c.label}</h3>
         <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">{SRC[c.source] || c.source}</span>
-        {c.consultDone && <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-200">консультація була</span>}
+        {c.outcome === 'no_show' ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-200">не прийшли</span> : c.outcome === 'refused' ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-900/40 text-red-200" title={c.refusalReason || ''}>відмова{c.refusalReason ? `: ${c.refusalReason.slice(0, 40)}` : ''}</span> : c.consultDone && <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-200">{c.outcome === 'thinking' ? 'зустріч була, думають' : 'зустріч була'}</span>}
         {c.sales.length > 0 && <span className="text-[11px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-200">продажі: {fmt.money(c.salesTotal)}</span>}
         <span className="text-xs text-slate-500 ml-auto">{c.adName ? `оголошення «${c.adName}»` : c.adExtId ? `оголошення ${c.adExtId}` : 'оголошення невідоме'}</span>
       </div>
@@ -49,7 +69,7 @@ function ClientCard({ c, onChange }) {
           {c.source === 'instagram' && (
             <div className="flex flex-wrap gap-1">{STAGES.map(([k, label]) => <button key={k} className={clsx('btn !py-1 text-xs', c.stage === k ? 'bg-brand/20 text-brand-light' : 'bg-slate-800 text-slate-300 hover:bg-slate-700')} onClick={() => run(() => api.patchClient(c.id, { stage: k }))}>{label}</button>)}</div>
           )}
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={c.consultDone} onChange={(e) => run(() => api.patchClient(c.id, { consultDone: e.target.checked }))} />Консультація відбулась</label>
+          <Outcome c={c} run={run} />
           {c.sales.length > 0 && (
             <ul className="text-sm space-y-1">
               {c.sales.map((s) => <li key={s.id} className="flex items-center gap-2"><span>{s.product}: {fmt.money(s.amount)} · {new Date(s.soldAt).toLocaleDateString('uk-UA')}</span><button className="text-xs text-slate-500 hover:text-red-300" onClick={() => run(() => api.deleteSale(c.id, s.id))}>прибрати</button></li>)}
@@ -103,7 +123,7 @@ export default function ClientsPage() {
 
   async function adopt(c) {
     const label = (labels[c.eventId] || '').trim();
-    if (!label) { setLabels({ ...labels, [c.eventId]: '' }); setError('Введіть підпис, щоб додати клієнта з оплати'); return; }
+    if (!label) { setLabels({ ...labels, [c.eventId]: '' }); setError('Введіть підпис, щоб додати людину в список'); return; }
     setError('');
     try { await api.createClient({ label, fromEventId: c.eventId }); load(); } catch (e) { setError(e.message); }
   }
@@ -112,19 +132,19 @@ export default function ClientsPage() {
     <div className="space-y-5 max-w-4xl">
       <div><h1 className="text-lg font-medium">Клієнти</h1><p className="text-sm text-slate-400">Тут ви позначаєте, хто провів консультацію і що купив далі. Ці позначки потрапляють у карту, ціну продажу і звіти. Імен і телефонів із сайтів платформа не бере.</p></div>
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-        {[['Клієнтів', t.clients], ['Консультацій було', t.consults], ['Продажів далі', t.upsells], ['Дохід з продажів далі', fmt.money(t.upsellRevenue)]].map(([k, v]) => <div key={k} className="bg-slate-900 rounded-lg p-4"><div className="text-xs text-slate-400">{k}</div><div className="text-2xl font-medium mt-1">{v}</div></div>)}
+        {[['Людей у списку', t.clients], ['Зустрічей було', t.consults], ['Не прийшли', t.noShow], ['Відмов', t.refused], ['Продажів далі', t.upsells], ['Дохід з продажів далі', fmt.money(t.upsellRevenue)]].map(([k, v]) => <div key={k} className="bg-slate-900 rounded-lg p-4"><div className="text-xs text-slate-400">{k}</div><div className="text-2xl font-medium mt-1">{v}</div></div>)}
       </div>
 
       {cands.length > 0 && (
         <section className="card p-4 space-y-3">
-          <h2 className="text-sm font-medium">Оплати без клієнта</h2>
-          <p className="text-xs text-slate-400">Останні оплати з сайту, бота і календаря. Ви знаєте, хто це, за часом і сумою: дайте підпис, щоб відстежувати консультацію і продажі далі.</p>
+          <h2 className="text-sm font-medium">Записи й оплати без позначки</h2>
+          <p className="text-xs text-slate-400">Останні записи на зустріч і оплати з сайту, бота й календаря. Дайте підпис (ви впізнаєте людину за часом), щоб відмітити, чим закінчилась зустріч і що купили.</p>
           <div className="space-y-2">
             {cands.slice(0, 12).map((c) => (
               <div key={c.eventId} className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-slate-400 w-40">{fmt.dt(c.ts)}</span>
                 <span className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">{SRC[c.source] || c.source}</span>
-                <span>{c.amount ? fmt.money(c.amount) : 'сума за замовчуванням'}</span>
+                <span>{c.kind === 'booking' ? 'запис на зустріч' : c.amount ? fmt.money(c.amount) : 'оплата'}</span>
                 <span className="text-xs text-slate-500">{c.adName || (c.adExtId ? `оголошення ${c.adExtId}` : 'оголошення невідоме')}</span>
                 <input aria-label="Підпис клієнта" className="inp !w-44 ml-auto" placeholder="Підпис" value={labels[c.eventId] || ''} onChange={(e) => setLabels({ ...labels, [c.eventId]: e.target.value })} />
                 <button className="btn-ghost !py-1.5" onClick={() => adopt(c)}>Додати</button>
