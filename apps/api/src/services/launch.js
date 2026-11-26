@@ -71,6 +71,8 @@ function parseSpec(b = {}) {
   s.countries = [...new Set((Array.isArray(b.countries) ? b.countries : String(b.countries || 'UA').split(/[\s,]+/)).map((c) => String(c).trim().toUpperCase()).filter(Boolean))];
   if (!s.countries.length || s.countries.some((c) => !/^[A-Z]{2}$/.test(c))) throw new ValidationError('Країни — дволітерні коди, наприклад UA');
   s.advantageAudience = !!b.advantageAudience;
+  // Audience Network (сторонні додатки) вимкнена за замовчуванням: на першій кампанії забрала 79% грошей випадковими кліками.
+  s.audienceNetwork = !!b.audienceNetwork;
   s.ageMin = int(b.ageMin, 25); s.ageMax = int(b.ageMax, 55);
   if (!(s.ageMin >= 18 && s.ageMax <= 65 && s.ageMin <= s.ageMax)) throw new ValidationError('Вік — від 18 до 65');
   // Правило Meta: коли аудиторію можна розширювати, нижня межа не вища за 25, а верхньої нема.
@@ -192,6 +194,9 @@ async function check(project, launch, { actor = 'user:' } = {}) {
 
 const campaignName = (bundle, spec) => `[${bundle.code}] ${spec.name || bundle.name}`.slice(0, 240);
 
+/** Площадки. Threads Meta не пропонує для мети «ліди», тому там його нема. */
+const placements = (spec) => ['facebook', 'instagram', 'messenger', ...(spec.goal === 'leads' ? [] : ['threads']), ...(spec.audienceNetwork ? ['audience_network'] : [])];
+
 /** Посилання конкретного оголошення. Номери підставляються справжні (а не макроси Meta), щоб бот і сайт точно знали джерело. */
 function adLink(spec, bundle, creative, ids) {
   const d = spec.destination;
@@ -249,7 +254,7 @@ async function build(project, launch, verdict, actor) {
         name: `${name} · група`, campaign_id: ids.campaign, daily_budget: Math.round(spec.dailyBudget * 100),
         billing_event: 'IMPRESSIONS', optimization_goal: goal.optimization, bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
         ...(spec.goal === 'leads' ? { destination_type: 'WEBSITE', promoted_object: { pixel_id: spec.pixelId, custom_event_type: spec.pixelEvent } } : {}),
-        targeting: { geo_locations: { countries: spec.countries }, age_min: spec.ageMin, age_max: spec.ageMax, targeting_automation: { advantage_audience: spec.advantageAudience ? 1 : 0 } },
+        targeting: { geo_locations: { countries: spec.countries }, age_min: spec.ageMin, age_max: spec.ageMax, targeting_automation: { advantage_audience: spec.advantageAudience ? 1 : 0 }, publisher_platforms: placements(spec) },
       });
       await save();
     }
