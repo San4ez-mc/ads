@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { api, fmt } from '../api/client';
 import { buildMap, buildPlanMap, buildCreativeMap, COLOR } from '../lib/mapLayout';
 import { EditAdModal, HintNode, HintList } from '../components/MapActions';
+import { CreativeShelf, ChangesBar, DRAG, useChanges } from '../components/MapShelf';
 import { useAuthStore } from '../stores/authStore';
 
 const PERIODS = [{ d: 1, label: 'Сьогодні' }, { d: 7, label: '7 днів' }, { d: 14, label: '14 днів' }, { d: 30, label: '30 днів' }];
@@ -24,7 +25,7 @@ function AdNode({ data }) {
   const a = data.ad; const img = a.creative.imageUrl || a.creative.thumbnailUrl;
   const far = zoom < 0.32;
   return (
-    <div className={clsx('h-full w-full rounded-xl overflow-hidden bg-slate-900 border-2 flex flex-col cursor-pointer transition-opacity', data.dim && 'opacity-30')} style={{ borderColor: data.picked ? '#c4b5fd' : `${COLOR[a.verdict]}99` }} title={a.creative.body || a.name}>
+    <div className={clsx('h-full w-full rounded-xl overflow-hidden bg-slate-900 border-2 flex flex-col cursor-pointer transition-opacity', data.dim && 'opacity-30')} style={{ borderColor: data.picked ? '#c4b5fd' : `${COLOR[a.verdict]}99`, pointerEvents: 'all' }} title={a.creative.body || a.name} {...dropProps(data.onReplace && ((c) => data.onReplace(a, c)))}>
       {far ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center p-4" style={{ background: `${COLOR[a.verdict]}22` }}>
           <div className="text-[44px] leading-tight font-medium" style={{ color: COLOR[a.verdict] }}>{a.saleCost ? fmt.money(a.saleCost) : a.verdictLabel}</div>
@@ -51,7 +52,12 @@ function AdNode({ data }) {
               <div className="line-clamp-2 mt-0.5" title={a.placements?.text}><span className="text-slate-500">Де: </span><span className="text-slate-300">{a.placements?.text || 'немає даних'}</span></div>
             </div>
             <div className="text-[11px] text-slate-500">{STATUS[a.effectiveStatus] || a.effectiveStatus || '—'}</div>
-            {data.onEdit && <button type="button" style={{ pointerEvents: 'all' }} className="nodrag nopan btn-primary !py-1.5 w-full" onClick={(e) => { e.stopPropagation(); data.onEdit(a); }}>Внести правки</button>}
+            {data.onEdit && (
+              <div className="flex gap-2">
+                <button type="button" style={{ pointerEvents: 'all' }} className="nodrag nopan btn-primary !py-1.5 flex-1" onClick={(e) => { e.stopPropagation(); data.onEdit(a); }}>Внести правки</button>
+                <button type="button" style={{ pointerEvents: 'all' }} className="nodrag nopan btn-ghost !py-1.5" onClick={(e) => { e.stopPropagation(); data.onToggle(a); }}>{a.effectiveStatus === 'ACTIVE' ? 'Вимкнути' : 'Увімкнути'}</button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -75,7 +81,7 @@ function CampaignNode({ data }) {
 function SetLabel({ data }) {
   const about = [data.audience, data.placements].filter(Boolean).join(' | ');
   return (
-    <div className="text-xs text-slate-400 leading-tight">
+    <div className="h-full w-full text-xs text-slate-400 leading-tight rounded" style={{ pointerEvents: 'all' }} {...dropProps(data.onAddToSet && ((c) => data.onAddToSet(data.setId, c)))}>
       <div className="truncate">Група: <span className="text-slate-200">{data.name}</span>{data.dailyBudget ? ` · ${data.dailyBudget} на день` : ''}{data.learning ? ' · навчається' : ''}</div>
       {about && <div className="truncate text-[10px]" title={about}>{about}</div>}
     </div>
@@ -244,13 +250,29 @@ function CreativeCardNode({ data }) {
 
 const nodeTypes = { hint: HintNode, audience: AudienceNode, pain: PainNode, crCard: CreativeCardNode, ad: AdNode, campaign: CampaignNode, setLabel: SetLabel, element: ElementNode, step: StepNode, ghost: GhostNode, sale: SaleNode, lane: LaneNode, planned: PlannedNode, addCreative: AddCreativeNode, note: NoteNode };
 
-/** Кнопка «Аналізувати» і стан вікна правок — спільні для обох карт з цифрами. */
+/** Приймає перетягнутий із полиці креатив. */
+const dropProps = (onDrop) => (onDrop ? {
+  onDragOver: (e) => { if (e.dataTransfer.types.includes(DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } },
+  onDrop: (e) => { const raw = e.dataTransfer.getData(DRAG); if (!raw) return; e.preventDefault(); e.stopPropagation(); onDrop(JSON.parse(raw)); },
+} : {});
+
+/** «Аналізувати», вікно правок, полиця креативів і список змін — спільні для обох карт. */
 function useMapTools(query, reload) {
   const canApprove = useAuthStore((s) => s.can('approve'));
   const [advice, setAdvice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [edit, setEdit] = useState(null); // { ad, preset }
+  const { changes, setChanges } = useChanges();
+  const [shelf, setShelf] = useState(null);
+  const loadShelf = useCallback(() => api.library().then(setShelf).catch((e) => setShelf({ items: [], adSets: [], error: e.message })), []);
+  useEffect(() => { loadShelf(); }, [loadShelf]);
+  // Та сама дія над тим самим обʼєктом замінює попередню, а не дублюється (нові оголошення — кожне окремо).
+  const queue = useCallback((input, label, extra = {}) => {
+    const key = [input.kind, input.adId || input.adSetId, input.kind === 'add_ad' ? input.creativeId : ''].join(':') + `:${JSON.stringify(input)}`;
+    const slot = [input.kind.replace(/^(pause|resume)_ad$/, 'state'), input.adId || input.adSetId, input.kind === 'add_ad' ? input.creativeId : ''].join(':');
+    setChanges((l) => [...l.filter((c) => c.slot !== slot), { key, slot, input, label, ...extra }]);
+  }, [setChanges]);
   const key = JSON.stringify(query);
   useEffect(() => { setAdvice(null); setError(''); }, [key]);
   const analyze = async () => {
@@ -258,7 +280,10 @@ function useMapTools(query, reload) {
     try { setAdvice(await api.analyze(query)); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const onEdit = useCallback((ad, action) => setEdit({ ad, preset: action && action.kind !== 'edit' ? action : null }), []);
-  const handlers = useMemo(() => ({ onEdit: canApprove ? onEdit : undefined }), [canApprove, onEdit]);
+  const onReplace = useCallback((ad, c) => queue({ kind: 'replace_creative', adId: ad.id, creativeId: c.id }, `Замінити креатив «${ad.name}» на №${c.number} «${c.headline}»`), [queue]);
+  const onAddToSet = useCallback((set, c) => queue({ kind: 'add_ad', adSetId: set.id, creativeId: c.id }, `Нове оголошення в групі «${set.name}»: №${c.number} «${c.headline}»`, { needsLink: !set.hasLink }), [queue]);
+  const onToggle = useCallback((ad) => { const on = ad.effectiveStatus === 'ACTIVE'; queue({ kind: on ? 'pause_ad' : 'resume_ad', adId: ad.id }, `${on ? 'Вимкнути' : 'Увімкнути'} «${ad.name}»`); }, [queue]);
+  const handlers = useMemo(() => (canApprove ? { onEdit, onReplace, onToggle, onAddToSet: (setId, c) => { const set = shelf?.adSets.find((s) => s.id === setId); if (set) onAddToSet(set, c); } } : {}), [canApprove, onEdit, onReplace, onToggle, onAddToSet, shelf]);
   const count = advice ? [...Object.values(advice.ads), ...Object.values(advice.elements), advice.general].reduce((n, l) => n + l.length, 0) : 0;
   const button = <button className="btn-primary !py-1.5" disabled={busy} onClick={analyze}>{busy ? 'Аналізую…' : advice ? 'Аналізувати ще раз' : 'Аналізувати'}</button>;
   const summary = (error || advice) && (
@@ -269,8 +294,10 @@ function useMapTools(query, reload) {
       {advice?.general.length > 0 && <div className="max-w-[640px]"><HintList hints={advice.general} /></div>}
     </div>
   );
-  const modal = edit && <EditAdModal ad={edit.ad} preset={edit.preset} onClose={() => setEdit(null)} onChanged={reload} />;
-  return { advice, handlers, button, summary, modal };
+  const modal = edit && <EditAdModal ad={edit.ad} preset={edit.preset} onClose={() => setEdit(null)} onQueue={queue} />;
+  const bar = <ChangesBar changes={changes} onRemove={(k) => setChanges((l) => l.filter((c) => c.key !== k))} onClear={() => setChanges([])} onApplied={() => { reload(); loadShelf(); }} />;
+  const shelfPanel = <CreativeShelf data={shelf} onAdd={canApprove ? (c, set) => onAddToSet(set, c) : undefined} />;
+  return { advice, handlers, button, summary, modal, bar, shelfPanel };
 }
 
 function AdPanel({ ad, onClose }) {
@@ -349,9 +376,12 @@ function AdsMapView() {
         </div>
       </div>
       {tools.summary}
+      {tools.bar}
       {tools.modal}
+      <div className="flex gap-3 flex-1 min-h-0">
+      {tools.shelfPanel}
       {empty ? (
-        <div className="card p-8 text-center">
+        <div className="card p-8 text-center flex-1">
           <h2 className="text-lg font-medium mb-2">{data.bundle ? "У цієї зв'язки ще нема оголошень" : 'На карті поки порожньо'}</h2>
           <p className="text-slate-400 text-sm mb-4">{data.bundle ? `Назвіть кампанію в кабінеті так, щоб у назві було «[${data.bundle.code || 'код'}]», і оновіть дані — її оголошення з'являться тут.` : "Підключіть рекламний кабінет і оновіть дані — креативи з'являться зліва, а кроки сайту й бота справа."}</p>
           <Link to={data.bundle ? '/bundles' : '/connections'} className="btn-primary">{data.bundle ? "До зв'язок" : 'Підключити кабінет'}</Link>
@@ -366,6 +396,7 @@ function AdsMapView() {
           {one && <AdPanel ad={one} onClose={() => setSelected(new Set())} />}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -401,9 +432,12 @@ function PlanView() {
         {!data.metaConnected && <Link to="/connections" className="btn-ghost !py-1.5">Підключити кабінет</Link>}
       </div>
       {tools.summary}
+      {tools.bar}
       {tools.modal}
+      <div className="flex gap-3 flex-1 min-h-0">
+      {tools.shelfPanel}
       {data.lanes.length === 0 ? (
-        <div className="card p-8 text-center"><h2 className="text-lg font-medium mb-2">Воронок ще нема</h2><p className="text-slate-400 text-sm mb-4">Створіть першу зв'язку: аудиторія, обіцянка і шлях.</p><Link to="/bundles" className="btn-primary">До зв'язок</Link></div>
+        <div className="card p-8 text-center flex-1"><h2 className="text-lg font-medium mb-2">Воронок ще нема</h2><p className="text-slate-400 text-sm mb-4">Створіть першу зв'язку: аудиторія, обіцянка і шлях.</p><Link to="/bundles" className="btn-primary">До зв'язок</Link></div>
       ) : (
         <div className="relative flex-1 rounded-xl overflow-hidden border border-slate-800">
           <ReactFlow key={`${bundleId || 'all'}:${tools.advice ? 'hints' : 'plain'}`} nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode="dark" fitView fitViewOptions={{ padding: 0.05, nodes: focus }} minZoom={0.03} maxZoom={2} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}>
@@ -413,6 +447,7 @@ function PlanView() {
           </ReactFlow>
         </div>
       )}
+      </div>
     </div>
   );
 }

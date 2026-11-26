@@ -9,8 +9,10 @@ const { toUah, round2 } = require('../lib/money');
 const launch = require('./launch');
 const { PLATFORM } = require('../lib/describe');
 
-const KINDS = ['pause_ad', 'resume_ad', 'set_adset_budget', 'set_placements', 'replace_creative'];
-const ON_ADSET = ['set_adset_budget', 'set_placements']; // дії над групою; решта — над оголошенням
+const KINDS = ['pause_ad', 'resume_ad', 'set_adset_budget', 'set_placements', 'replace_creative', 'add_ad'];
+const ON_ADSET = ['set_adset_budget', 'set_placements', 'add_ad']; // дії над групою; решта — над оголошенням
+const CHANGES = ['set_placements', 'replace_creative', 'add_ad']; // виконуються у change()
+const MAX_ADS_DAY = 10; // (5)
 const PLACEMENTS = ['facebook', 'instagram', 'messenger', 'threads', 'audience_network'];
 const DAY = 86400000;
 const MAX_BUDGET_STEP = 0.2; // (7) не більше 20% за раз
@@ -18,7 +20,7 @@ const BUDGET_COOLDOWN_DAYS = 3; // (7) і не частіше раз на 3 дн
 const FRESH_DAYS = 3; // (8) свіжі зміни й «навчання» не чіпаємо, крім аварійного вимкнення
 
 /** Рівень самостійності, потрібний, щоб актор без людини (правило, ШІ) виконав дію (15). Людина з підтвердженням — завжди. */
-const NEEDED_LEVEL = { pause_ad: 2, resume_ad: 3, set_adset_budget: 3, set_placements: 4, replace_creative: 4 }; // 4 = лише людина
+const NEEDED_LEVEL = { pause_ad: 2, resume_ad: 3, set_adset_budget: 3, set_placements: 4, replace_creative: 4, add_ad: 4 }; // 4 = лише людина
 
 const money = (n) => `${Math.round(n)} грн`;
 
@@ -101,25 +103,52 @@ async function check(project, input, { actor = 'user:' } = {}) {
     if (list.includes('threads') && !list.includes('instagram')) reasons.push('Threads працює лише разом з Instagram');
     notes.push(`Площадки: ${list.map((x) => PLATFORM[x] || x).join(', ')}`);
   }
-  if (kind === 'replace_creative') {
-    try {
-      const got = await launch.contentCreatives(project);
-      const c = got.creatives.find((x) => x.id === input.creativeId);
-      if (!c) reasons.push('Креатив не знайдено в контент-платформі');
-      else {
-        if (c.violations?.length) reasons.push(`(4) Креатив №${c.number} не пройшов перевірку правил реклами: ${c.violations.join('; ')}`);
-        else if (c.status === 'draft') reasons.push(`(4) Креатив №${c.number} ще чернетка`);
-        const text = launch.parseCreativeText(c.text);
-        if (!text) reasons.push(`Креатив №${c.number}: не вдалося прочитати текст і заголовок`);
-        let media = null; try { media = new URL(c.mediaUrl); } catch { /* нема файла */ }
-        if (!media || !got.origins.includes(media.origin)) reasons.push(`Креатив №${c.number}: нема картинки з контент-платформи`);
-        else if (c.mediaType !== 'image') reasons.push('Замінити поки можна лише на картинку; з відео створюйте нову кампанію на сторінці «Запуск»');
-        if (text) { creative = { id: c.id, number: c.number, mediaUrl: c.mediaUrl, origins: got.origins, ...text }; notes.push(`Новий креатив №${c.number}: «${text.headline}»`); }
-      }
-    } catch (e) { reasons.push(`(4) Не вдалося перевірити креатив: ${scrub(e.message)}`); }
+  if (kind === 'replace_creative' || kind === 'add_ad') creative = await checkCreative(project, input.creativeId, reasons, notes);
+
+  let place = null; // куди й від кого піде нове оголошення
+  if (kind === 'add_ad') {
+    if (adSet.learningStage === 'LEARNING') reasons.push('(8) Група ще навчається: нові оголошення додавайте, коли навчання закінчиться');
+    const dayStart = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    const added = await db.actionLog.count({ where: { projectId: project.id, kind: 'add_ad', status: 'done', createdAt: { gte: dayStart } } });
+    const launched = (await db.launch.findMany({ where: { projectId: project.id, createdInMetaAt: { gte: dayStart } } })).reduce((n, l) => n + Object.values(l.ids?.items || {}).filter((i) => i.ad).length, 0);
+    if (added + launched >= MAX_ADS_DAY) reasons.push(`(5) Сьогодні вже ${added + launched} нових оголошень: більше ${MAX_ADS_DAY} на добу не можна`);
+    const sibling = await db.ad.findFirst({ where: { adSetId: adSet.id, linkUrl: { not: null } }, orderBy: { extCreatedAt: 'desc' } });
+    const defaults = conn?.config?.launchDefaults || {};
+    const link = String(input.link || '').trim() || sibling?.linkUrl || null;
+    let url = null; try { url = link ? new URL(link) : null; } catch { /* крива адреса */ }
+    if (!url || url.protocol !== 'https:') reasons.push('Вкажіть, куди веде оголошення: адресу https://… (для бота https://t.me/імʼя?start=воронка)');
+    else if (/(^|\.)t\.me$/i.test(url.hostname) && !url.searchParams.get('start')) reasons.push('У посиланні на бота має бути ?start=код_воронки');
+    if (!sibling && !defaults.pageId) reasons.push('Невідома Facebook-сторінка: створіть перше оголошення зі сторінки «Запуск»');
+    if (url) { notes.push(`Нове оголошення буде вимкненим. Веде на ${url.origin}${url.pathname}`); place = { link: url.toString(), siblingAd: sibling?.externalId || null, pageId: defaults.pageId || null, instagramId: defaults.instagramId || null }; }
   }
 
-  return { ok: reasons.length === 0, reasons, notes, creative, adExtId: ad?.externalId, ad: ad && { id: ad.id, name: ad.name, status: ad.status }, adSet: { id: adSet.id, name: adSet.name, externalId: adSet.externalId }, connectionId: conn?.id, spentToday: round2(spentToday), limit: round2(limit), dryRun: !!project.dryRun };
+  return { ok: reasons.length === 0, reasons, notes, creative, place, adExtId: ad?.externalId, ad: ad && { id: ad.id, name: ad.name, status: ad.status }, adSet: { id: adSet.id, name: adSet.name, externalId: adSet.externalId }, connectionId: conn?.id, campaignId: campaign.id, spentToday: round2(spentToday), limit: round2(limit), dryRun: !!project.dryRun };
+}
+
+/** (4) Креатив із контент-платформи, придатний для кабінету; причини відмови дописує в reasons. */
+async function checkCreative(project, creativeId, reasons, notes) {
+  try {
+    const got = await launch.contentCreatives(project);
+    const c = got.creatives.find((x) => x.id === creativeId);
+    if (!c) { reasons.push('Креатив не знайдено в контент-платформі'); return null; }
+    if (c.violations?.length) reasons.push(`(4) Креатив №${c.number} не пройшов перевірку правил реклами: ${c.violations.join('; ')}`);
+    else if (c.status === 'draft') reasons.push(`(4) Креатив №${c.number} ще чернетка`);
+    const text = launch.parseCreativeText(c.text);
+    if (!text) reasons.push(`Креатив №${c.number}: не вдалося прочитати текст і заголовок`);
+    let media = null; try { media = new URL(c.mediaUrl); } catch { /* нема файла */ }
+    if (!media || !got.origins.includes(media.origin)) reasons.push(`Креатив №${c.number}: нема картинки з контент-платформи`);
+    else if (c.mediaType !== 'image') reasons.push('Звідси можна лише картинку; з відео створюйте кампанію на сторінці «Запуск»');
+    if (!text) return null;
+    notes.push(`Креатив №${c.number}: «${text.headline}»`);
+    return { id: c.id, number: c.number, mediaUrl: c.mediaUrl, origins: got.origins, ...text };
+  } catch (e) { reasons.push(`(4) Не вдалося перевірити креатив: ${scrub(e.message)}`); return null; }
+}
+
+/** Мітка оголошення в посиланні: щоб візити й діалоги привʼязувались саме до нього. */
+function tagLink(link, adId) {
+  const u = new URL(link);
+  if (/(^|\.)t\.me$/i.test(u.hostname)) { const start = (u.searchParams.get('start') || '').replace(/__[ac][A-Za-z0-9]+$/, ''); if (start) u.searchParams.set('start', `${start}__a${adId}`); } else u.searchParams.set('ad_id', adId);
+  return u.toString();
 }
 
 /** Продажі й витрати по списку оголошень за останні 14 днів (для правила 9). */
@@ -145,7 +174,7 @@ async function perform(project, input, { actor }) {
     await logAction(project.id, actor, input.kind, { target: logTarget || String(input.adId || input.adSetId || ''), reason: `${reasonText || ''}${reasonText ? ' | ' : ''}${verdict.reasons.join('; ')}`, status: 'blocked' });
     return { status: 'blocked', reasons: verdict.reasons, notes: verdict.notes };
   }
-  if (input.kind === 'set_placements' || input.kind === 'replace_creative') return change(project, input, verdict, { actor, target, logTarget, reasonText });
+  if (CHANGES.includes(input.kind)) return change(project, input, verdict, { actor, target, logTarget, reasonText });
   const before = input.kind === 'set_adset_budget' ? { dailyBudget: (await db.adSet.findUnique({ where: { id: verdict.adSet.id } })).dailyBudget } : { status: verdict.ad.status };
   const after = input.kind === 'set_adset_budget' ? { dailyBudget: Number(input.dailyBudget) } : { status: input.kind === 'pause_ad' ? 'PAUSED' : 'ACTIVE' };
   // (16) Режим «проба»: нічого не міняємо, лише записуємо «зробив би».
@@ -195,7 +224,22 @@ async function change(project, input, verdict, { actor, target, logTarget, reaso
   }
   try {
     const token = decrypt(conn.secretWrite);
-    if (input.kind === 'set_placements') {
+    if (input.kind === 'add_ad') {
+      const { place, creative: c } = verdict;
+      const story = place.siblingAd ? (await meta.readAdCreative(token, place.siblingAd)).object_story_spec || {} : {};
+      const spec = { pageId: story.page_id || place.pageId, instagramId: story.instagram_user_id || place.instagramId, destination: { type: /\/\/t\.me\//i.test(place.link) ? 'telegram' : 'site' } };
+      const bare = new URL(place.link); bare.searchParams.delete('ad_id');
+      const name = `№${c.number} · ${c.headline}`.slice(0, 240);
+      const imageHash = await meta.uploadImage(token, conn.externalId, await launch.download(c.mediaUrl, c.origins));
+      const first = await meta.createCreative(token, conn.externalId, launch.creativeFields(spec, c, { imageHash }, bare.toString(), name));
+      const adId = await meta.createAd(token, conn.externalId, { name, adset_id: logTarget, creative: { creative_id: first } });
+      after = { ad: adId, creative: c.number, status: 'PAUSED' };
+      const link = tagLink(place.link, adId);
+      const finalId = await meta.createCreative(token, conn.externalId, launch.creativeFields(spec, c, { imageHash }, link, name));
+      await meta.setAdCreative(token, adId, finalId);
+      if ((await meta.readBack(token, adId)).status !== 'PAUSED') { await meta.setStatus(token, adId, 'PAUSED'); return fail('Нове оголошення виявилось не вимкненим: його вимкнено, перевірте в Ads Manager.'); }
+      await db.ad.create({ data: { projectId: project.id, campaignId: verdict.campaignId, adSetId: verdict.adSet.id, channel: 'meta', externalId: adId, name, status: 'PAUSED', effectiveStatus: 'PAUSED', creativeId: finalId, title: c.headline, body: c.primary, linkUrl: link, imageUrl: c.mediaUrl, content2PostId: c.id, extCreatedAt: new Date() } });
+    } else if (input.kind === 'set_placements') {
       const current = await meta.readTargeting(token, logTarget);
       const next = { ...current, publisher_platforms: input.placements };
       // Налаштування, привʼязані до вимкненої площадки, Meta не приймає.
@@ -211,9 +255,7 @@ async function change(project, input, verdict, { actor, target, logTarget, reaso
       const story = old.object_story_spec || {};
       const oldLink = story.link_data?.link || story.video_data?.call_to_action?.value?.link;
       if (!story.page_id || !oldLink) return fail('У цього оголошення креатив з готового допису: замінити його звідси не можна');
-      const u = new URL(oldLink); const telegram = /(^|\.)t\.me$/i.test(u.hostname);
-      // Мітка оголошення в посиланні: щоб візити й діалоги привʼязувались саме до нього.
-      if (telegram) { const start = (u.searchParams.get('start') || '').replace(/__[ac][A-Za-z0-9]+$/, ''); if (start) u.searchParams.set('start', `${start}__a${logTarget}`); } else u.searchParams.set('ad_id', logTarget);
+      const u = new URL(tagLink(oldLink, logTarget)); const telegram = /(^|\.)t\.me$/i.test(u.hostname);
       const c = verdict.creative; const name = `№${c.number} · ${c.headline}`.slice(0, 240);
       const imageHash = await meta.uploadImage(token, conn.externalId, await launch.download(c.mediaUrl, c.origins));
       const fields = launch.creativeFields({ pageId: story.page_id, instagramId: story.instagram_user_id, destination: { type: telegram ? 'telegram' : 'site' } }, c, { imageHash }, u.toString(), name);
@@ -228,7 +270,7 @@ async function change(project, input, verdict, { actor, target, logTarget, reaso
     return fail(e.name === 'MetaError' ? launch.explain(e) : scrub(e.message));
   }
   await logAction(project.id, actor, input.kind, { target: logTarget, before, after, reason: reasonText, status: 'done' });
-  return { status: 'done', message: `Готово: ${target}. Meta перевірить зміну, перші цифри будуть після синхронізації.` };
+  return { status: 'done', message: input.kind === 'add_ad' ? `Оголошення додано в групу «${target}» вимкненим. Увімкніть його, коли перевірите.` : `Готово: ${target}. Meta перевірить зміну, перші цифри будуть після синхронізації.` };
 }
 
 module.exports = { check, perform, KINDS, NEEDED_LEVEL };

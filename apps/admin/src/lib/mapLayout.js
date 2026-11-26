@@ -42,12 +42,12 @@ export function buildMap(data, selected, advice = null, handlers = {}) {
     for (const s of c.adSets) {
       const cols = s.ads.length > 1 ? 2 : 1;
       const w = cols * AD_W + (cols - 1) * GAP;
-      children.push({ id: `set:${s.id}`, type: 'setLabel', parentId: frameId, extent: 'parent', draggable: false, selectable: false, position: { x: FRAME_PAD, y: innerY }, data: { name: s.name, dailyBudget: s.dailyBudget, learning: s.learningStage === 'LEARNING', audience: s.audience?.text, placements: s.placements?.text, width: w }, style: { width: w, height: SET_HEAD - 8 } });
+      children.push({ id: `set:${s.id}`, type: 'setLabel', parentId: frameId, extent: 'parent', draggable: false, selectable: false, position: { x: FRAME_PAD, y: innerY }, data: { name: s.name, dailyBudget: s.dailyBudget, learning: s.learningStage === 'LEARNING', audience: s.audience?.text, placements: s.placements?.text, width: w, setId: s.id, onAddToSet: handlers.onAddToSet }, style: { width: w, height: SET_HEAD - 8 } });
       innerY += SET_HEAD;
       const rowH = AD_H + GAP + (s.ads.some((a) => advice?.ads[a.externalId]) ? HINT_H + GAP : 0);
       s.ads.forEach((a, i) => {
         const x = FRAME_PAD + (i % cols) * (AD_W + GAP); const ay = innerY + Math.floor(i / cols) * rowH;
-        children.push({ id: `ad:${a.externalId}`, type: 'ad', parentId: frameId, extent: 'parent', draggable: false, position: { x, y: ay }, data: { ad: a, target: data.target, picked: !!sel && sel.has(a.externalId), dim: !!sel && !sel.has(a.externalId), onEdit: handlers.onEdit }, style: { width: AD_W, height: AD_H } });
+        children.push({ id: `ad:${a.externalId}`, type: 'ad', parentId: frameId, extent: 'parent', draggable: false, position: { x, y: ay }, data: { ad: a, target: data.target, picked: !!sel && sel.has(a.externalId), dim: !!sel && !sel.has(a.externalId), onEdit: handlers.onEdit, onReplace: handlers.onReplace, onToggle: handlers.onToggle }, style: { width: AD_W, height: AD_H } });
         if (advice?.ads[a.externalId]) children.push(hintNode(`hint:${a.externalId}`, advice.ads[a.externalId], x, ay + AD_H + 12, AD_W, (action) => handlers.onEdit?.(a, action), { parentId: frameId, extent: 'parent' }));
         adPos.set(a.externalId, a);
       });
@@ -220,7 +220,7 @@ export function buildPlanMap(data, advice = null, handlers = {}) {
     const leftNodes = [];
     left.forEach((it, i) => {
       const cx = (i % cols) * (PLAN_CARD_W + GAP); const cy = bodyY + Math.floor(i / cols) * cellH;
-      if (it.kind === 'ad') { const id = `${pre}ad:${it.a.externalId}`; nodes.push({ id, type: 'ad', position: { x: cx, y: cy }, draggable: false, data: { ad: it.a, target: data.target, picked: false, dim: false, onEdit: handlers.onEdit }, style: { width: AD_W, height: AD_H } }); leftNodes.push(id);
+      if (it.kind === 'ad') { const id = `${pre}ad:${it.a.externalId}`; nodes.push({ id, type: 'ad', position: { x: cx, y: cy }, draggable: false, data: { ad: it.a, target: data.target, picked: false, dim: false, onEdit: handlers.onEdit, onReplace: handlers.onReplace, onToggle: handlers.onToggle }, style: { width: AD_W, height: AD_H } }); leftNodes.push(id);
         if (advice?.ads[it.a.externalId]) nodes.push(hintNode(`${pre}hint:${it.a.externalId}`, advice.ads[it.a.externalId], cx, cy + AD_H + 12, AD_W, (action) => handlers.onEdit?.(it.a, action))); }
       else if (it.kind === 'planned') { const id = `${pre}pc:${it.c.id}`; nodes.push({ id, type: 'planned', position: { x: cx, y: cy }, draggable: false, selectable: false, data: { c: it.c }, style: { width: PLAN_CARD_W, height: PLAN_CARD_H } }); leftNodes.push(id); }
       else { const id = `${pre}add`; nodes.push({ id, type: 'addCreative', position: { x: cx, y: cy }, draggable: false, selectable: false, data: { bundleId: lane.bundle.id, content: data.contentConnected }, style: { width: PLAN_CARD_W, height: 220 } }); leftNodes.push(id); }

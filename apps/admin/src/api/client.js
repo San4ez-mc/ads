@@ -59,6 +59,7 @@ export const api = {
   runAction: (d) => post('/actions', { ...d, confirm: true }),
   creatives: () => get('/creatives?limit=200'),
   creativeMap: () => get('/map/creatives'),
+  library: () => get('/map/library'),
   analyze: (p) => get(`/map/analyze${qs(p)}`),
   wishes: () => get('/creatives/wishes'),
   orderCreatives: (d) => post('/creatives/order', d),

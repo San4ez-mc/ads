@@ -12,6 +12,7 @@ const { inBundle } = require('./bundles');
 const meta = require('../channels/meta');
 const { decrypt, scrub } = require('../lib/secrets');
 const { analyze } = require('../lib/analyze');
+const { library } = require('../services/library');
 
 const router = express.Router();
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return null; } };
@@ -97,6 +98,11 @@ router.get('/map/analyze', asyncHandler(async (req, res) => {
   }
   const emptyAdSets = await db.adSet.findMany({ where: { projectId: req.project.id, effectiveStatus: 'ACTIVE', campaign: { effectiveStatus: 'ACTIVE' }, ads: { none: {} } }, select: { name: true } });
   res.json({ ok: true, data: { ...analyze(map, rows, { project: req.project, emptyAdSets }), warnings, from: p.from, to: p.to } });
+}));
+
+// Полиця креативів на карті: усі креативи контент-платформи й оголошення кабінету, з позначкою, що вже в рекламі.
+router.get('/map/library', asyncHandler(async (req, res) => {
+  res.json({ ok: true, data: await library(req.project) });
 }));
 
 module.exports = router;

@@ -64,11 +64,13 @@ test.before(async () => {
     sent.push({ post, path: parts.join('/'), body });
     if (post) {
       if (parts[1] === 'adimages') return json({ images: { b: { hash: 'h9' } } });
+      if (parts[1] === 'ads') { live.newAd = body; return json({ id: '830777' }); }
       if (parts[1] === 'adcreatives') { live.pending = { id: '5550002', ...body }; return json({ id: '5550002' }); }
       if (body.targeting) live.targeting = JSON.parse(body.targeting);
       if (body.creative) live.creative = { id: JSON.parse(body.creative).creative_id };
       return json({ success: true });
     }
+    if (String(u.searchParams.get('fields')).startsWith('status')) return json({ status: 'PAUSED', effective_status: 'PAUSED' });
     return String(u.searchParams.get('fields')).startsWith('creative') ? json({ creative: live.creative }) : json({ targeting: live.targeting });
   };
   await db.project.deleteMany({ where: { slug: 'selftest7' } });
@@ -109,6 +111,26 @@ test('креатив: порушення правил (4) блокує; добр
   assert.deepStrictEqual([story.page_id, story.link_data.message, story.link_data.name, story.link_data.image_hash], ['100200', 'Новий текст', 'Новий заголовок', 'h9']);
   assert.strictEqual(story.link_data.link, 'https://x.ua/?utm_source=meta&ad_id=830001');
   assert.strictEqual((await db.ad.findUnique({ where: { id: adRow.id } })).content2PostId, 'new');
+});
+
+test('нове оголошення в групу: вимкнене, на ту саму адресу з власною міткою, зʼявляється на полиці як «в рекламі»', async () => {
+  const noLink = await db.adSet.create({ data: { projectId: project.id, campaignId: adRow.campaignId, channel: 'meta', externalId: '820002', name: 'Порожня' } });
+  const need = await act({ kind: 'add_ad', adSetId: noLink.id, creativeId: 'new' });
+  assert.ok(need.status === 'blocked' && need.reasons.join(' ').includes('куди веде'), JSON.stringify(need));
+  const bot = await act({ kind: 'add_ad', adSetId: noLink.id, creativeId: 'new', link: 'https://t.me/some_bot' });
+  assert.ok(bot.status === 'blocked' && bot.reasons.join(' ').includes('start'));
+  live.creative = { id: '5550001', object_story_spec: { page_id: '100200', link_data: { link: 'https://x.ua/' } } };
+  const r = await act({ kind: 'add_ad', adSetId: setRow.id, creativeId: 'new' });
+  assert.strictEqual(r.status, 'done', JSON.stringify(r));
+  assert.deepStrictEqual([live.newAd.status, live.newAd.adset_id], ['PAUSED', '820001']);
+  assert.strictEqual(JSON.parse(live.pending.object_story_spec).link_data.link, 'https://x.ua/?utm_source=meta&ad_id=830777');
+  const row = await db.ad.findFirst({ where: { projectId: project.id, externalId: '830777' } });
+  assert.deepStrictEqual([row.status, row.content2PostId], ['PAUSED', 'new']);
+  const lib = await require('../src/services/library').library(project);
+  const item = lib.items.find((x) => x.id === 'new');
+  assert.ok(item.usable && item.ads.some((a) => a.externalId === '830777'), JSON.stringify(item));
+  assert.ok(lib.items.find((x) => x.id === 'bad').problem);
+  assert.ok(lib.adSets.some((s) => s.name === 'Порожня' && !s.hasLink));
 });
 
 test('режим «проба»: правка лише в журналі', async () => {
