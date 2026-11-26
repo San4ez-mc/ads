@@ -93,14 +93,17 @@ router.patch('/connections/:id', asyncHandler(async (req, res) => {
   if (b.readKey) data.secretRead = encrypt(String(b.readKey).trim());
   if (b.writeKey !== undefined) data.secretWrite = b.writeKey ? encrypt(String(b.writeKey).trim()) : null;
   if (b.slugs !== undefined && c.channel === 'flows') data.config = { ...(c.config || {}), slugs: slugList(b.slugs) };
+  if (b.paused !== undefined && c.channel === 'meta') data.config = { ...(c.config || {}), paused: !!b.paused, pausedAt: b.paused ? new Date().toISOString() : null };
   const updated = await db.connection.update({ where: { id: c.id }, data });
   const conn = b.readKey || b.slugs !== undefined ? await runCheck(updated) : updated;
-  await logAction(req.project.id, req.actor, 'connection_changed', { target: `${c.channel}:${c.externalId}`, after: { name: conn.name, readKeyChanged: !!b.readKey, writeKeyChanged: b.writeKey !== undefined } });
+  await logAction(req.project.id, req.actor, 'connection_changed', { target: `${c.channel}:${c.externalId}`, after: { name: conn.name, readKeyChanged: !!b.readKey, writeKeyChanged: b.writeKey !== undefined, ...(b.paused !== undefined ? { paused: !!b.paused } : {}) } });
   res.json({ ok: true, data: view(conn) });
 }));
 
 router.post('/connections/:id/check', asyncHandler(async (req, res) => {
-  res.json({ ok: true, data: view(await runCheck(await own(req))) });
+  const c = await own(req);
+  if (c.config?.paused) throw new ValidationError('Звернення до Meta призупинені: спершу увімкніть їх');
+  res.json({ ok: true, data: view(await runCheck(c)) });
 }));
 
 router.delete('/connections/:id', asyncHandler(async (req, res) => {

@@ -223,6 +223,7 @@ export default function ConnectionsPage() {
   useEffect(() => { load(); }, []);
 
   async function check(id) { setBusyId(id); try { await api.checkConnection(id); await load(); } catch (e) { setError(e.message); } finally { setBusyId(''); } }
+  async function pause(c) { setBusyId(c.id); setError(''); try { await api.patchConnection(c.id, { paused: !c.config?.paused }); await load(); } catch (e) { setError(e.message); } finally { setBusyId(''); } }
   async function remove(id) { setBusyId(id); try { await api.deleteConnection(id); setConfirmId(''); await load(); } catch (e) { setError(e.message); } finally { setBusyId(''); } }
 
   if (wizard) return <Wizard channel={wizard} onCancel={() => setWizard(null)} onDone={() => { setWizard(null); load(); }} />;
@@ -255,10 +256,12 @@ export default function ConnectionsPage() {
                   Ключ на читання: {c.readKey || 'нема'} · ключ керування: {c.writeKey || 'не додано'} · перевірено {fmt.dt(c.lastCheckAt)} · дані оновлено {fmt.dt(c.lastSyncAt)}
                 </div>
                 {info?.accountName && <div className="text-xs text-slate-400 mt-1">Кабінет «{info.accountName}», {info.currency}, {info.timezone}, стан: {info.accountStatusText}</div>}
+                {c.config?.paused && <div className="text-xs text-amber-200 mt-1">Звернення до Meta призупинені: платформа нічого не читає й не міняє (крім вашого «Вимкнути»). Реклама в кабінеті від цього не зупиняється.</div>}
                 {c.lastError && <div className="text-xs text-red-300 mt-1">{c.lastError}</div>}
               </div>
               <div className="ml-auto flex gap-2">
-                <button className="btn-ghost !py-1.5" onClick={() => check(c.id)} disabled={busyId === c.id}>{busyId === c.id ? 'Перевіряю…' : 'Перевірити'}</button>
+                {c.channel === 'meta' && <button className={c.config?.paused ? 'btn-primary !py-1.5' : 'btn-ghost !py-1.5'} onClick={() => pause(c)} disabled={busyId === c.id}>{c.config?.paused ? 'Відновити звернення' : 'Призупинити звернення'}</button>}
+                <button className="btn-ghost !py-1.5" hidden={!!c.config?.paused} onClick={() => check(c.id)} disabled={busyId === c.id}>{busyId === c.id ? 'Перевіряю…' : 'Перевірити'}</button>
                 {confirmId === c.id
                   ? <><button className="btn-danger !py-1.5" onClick={() => remove(c.id)} disabled={busyId === c.id}>Так, видалити</button><button className="btn-ghost !py-1.5" onClick={() => setConfirmId('')}>Ні</button></>
                   : <button className="btn-ghost !py-1.5" onClick={() => setConfirmId(c.id)}>Видалити</button>}

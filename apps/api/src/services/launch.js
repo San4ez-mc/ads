@@ -138,6 +138,7 @@ async function spentTodayUah(project) {
 function connectionReasons(conn) {
   if (!conn) return ['Підключення кабінету не знайдено'];
   const out = [];
+  if (conn.config?.paused) out.push('(13) Звернення до Meta призупинені: увімкніть їх у «Підключеннях»');
   if (conn.status !== 'ok') out.push(`(13) Підключення «${conn.name}» не в порядку (${conn.status === 'blocked' ? 'кабінет обмежено' : conn.status === 'error' ? 'помилка ключа' : 'не перевірено'}): спершу виправте його в «Підключеннях»`);
   if (!conn.secretWrite) out.push('Не додано ключ керування (ads_management) у «Підключення». Поточний ключ лише читає.');
   const c = currencyOf(conn);

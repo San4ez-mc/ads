@@ -138,6 +138,18 @@ test('відмова Meta (14): без повторів, чесне повідо
   assert.ok(await db.actionLog.count({ where: { projectId: project.id, kind: 'meta_error' } }) >= 1);
 });
 
+test('пауза звернень: нічого, крім вимкнення, у Meta не йде', async () => {
+  await db.connection.update({ where: { id: conn.id }, data: { config: { paused: true } } });
+  const up = await actions.check(project, { kind: 'resume_ad', adId: ad1.id }, { actor: 'user:1' });
+  assert.ok(up.reasons.join(' ').includes('призупинені'));
+  const off = await actions.check(project, { kind: 'pause_ad', adId: ad1.id }, { actor: 'user:1' });
+  assert.ok(!off.reasons.join(' ').includes('призупинені'));
+  sent.length = 0;
+  await require('../src/services/sync').runProjectSync(project.id, { kinds: ['structure', 'insights'] });
+  assert.strictEqual(sent.length, 0, 'синхронізація не звертається до Meta');
+  await db.connection.update({ where: { id: conn.id }, data: { config: {} } });
+});
+
 test('кабінет обмежено (13) або нема ключа керування: усе заблоковано', async () => {
   await db.connection.update({ where: { id: conn.id }, data: { status: 'blocked' } });
   const a = await actions.check(project, { kind: 'pause_ad', adId: ad2.id }, { actor: 'user:1' });

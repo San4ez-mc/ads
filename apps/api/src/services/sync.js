@@ -183,6 +183,8 @@ async function runProjectSync(projectId, { kinds = ['structure', 'insights', 'si
   const conns = await db.connection.findMany({ where: { projectId, secretRead: { not: null } } });
   const results = [];
   for (const c of conns) {
+    // Пауза звернень (власник підтверджує профіль, кабінет обмежено тощо): рекламний канал не чіпаємо зовсім.
+    if (c.channel === 'meta' && c.config?.paused) continue;
     if (c.channel === 'meta') {
       if (kinds.includes('structure')) { const r = await syncMetaStructure(c); results.push(r); if (!r.ok) continue; }
       if (kinds.includes('insights')) results.push(await syncMetaInsights(c, days));

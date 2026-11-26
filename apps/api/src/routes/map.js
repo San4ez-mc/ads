@@ -102,6 +102,7 @@ router.get('/map/analyze', asyncHandler(async (req, res) => {
   const conns = await db.connection.findMany({ where: { projectId: req.project.id, channel: 'meta', secretRead: { not: null } } });
   const rows = []; const warnings = [];
   for (const c of conns) {
+    if (c.config?.paused) { warnings.push('Звернення до Meta призупинені: площадки не читались'); continue; }
     try { rows.push(...await meta.fetchPlacements(decrypt(c.secretRead), c.externalId, p.from, p.to)); } catch (e) { warnings.push(`Площадки з кабінету «${c.name}» не отримано: ${scrub(e.message)}`); }
   }
   const emptyAdSets = await db.adSet.findMany({ where: { projectId: req.project.id, effectiveStatus: 'ACTIVE', campaign: { effectiveStatus: 'ACTIVE' }, ads: { none: {} } }, select: { name: true } });

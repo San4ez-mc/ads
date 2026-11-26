@@ -45,6 +45,8 @@ async function check(project, input, { actor = 'user:' } = {}) {
   if (!conn) reasons.push('Підключення кабінету не знайдено');
   else {
     if (conn.status === 'blocked' || conn.status === 'error') reasons.push(`(13) Підключення «${conn.name}» не в порядку (${conn.status === 'blocked' ? 'кабінет обмежено' : 'помилка ключа'}): автоматика зупинена, доки це не вирішено`);
+    // Вимкнення оголошення лишається доступним: це напрямок, безпечний для грошей.
+    if (conn.config?.paused && kind !== 'pause_ad') reasons.push('(13) Звернення до Meta призупинені: увімкніть їх у «Підключеннях»');
     if (!conn.secretWrite) reasons.push('Не додано ключ керування (ads_management) у «Підключення». Поточний ключ лише читає.');
   }
 
