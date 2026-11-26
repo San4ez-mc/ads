@@ -58,10 +58,10 @@ const GUIDES = {
     intro: 'Платформа забирає з ваших сайтів події: зайшов, натиснув, заповнив форму, оплатив — разом із номером оголошення.',
     steps: [
       ['Доробіть АПІ на хостингу', 'Методи описані у файлі «АПІ-сайтів-для-платформи-реклами.md». Мінімум: /ping, /sites, /events.'],
-      ['Створіть ключ на читання', 'В адмінці сайтів створіть ключ для платформи реклами. Він має давати лише читання подій.'],
-      ['Вставте адресу і ключ нижче', 'Адреса — базова, до якої дописуються /ping і /events.'],
+      ['Скопіюйте токен', 'Адмінка сайтів (leads.fineko.space/admin) → «API реклами» → «Показати ключ».'],
+      ['Вставте адресу і токен нижче', 'Адреса: https://leads.fineko.space/api/ads/v1'],
     ],
-    idLabel: 'Адреса АПІ', idPlaceholder: 'https://leads.fineko.space/api/ads/v1', keyLabel: 'Ключ на читання',
+    idLabel: 'Адреса АПІ', idPlaceholder: 'https://leads.fineko.space/api/ads/v1', keyLabel: 'Токен API сайтів',
     note: 'Імена, телефони й пошта з сайтів не забираються — лише кроки і номер заявки.',
   },
 };
@@ -159,7 +159,7 @@ function Wizard({ channel, onDone, onCancel }) {
         )}
         {channel === 'site' && (
           <div className="md:col-span-2">
-            <label className="lbl" htmlFor="c-wsite">Ключ для надсилання правок (необов'язково)</label>
+            <label className="lbl" htmlFor="c-wsite">Окремий токен для правок (необов'язково)</label>
             <input id="c-wsite" type="password" className="inp font-mono" value={f.writeKey} onChange={set('writeKey')} placeholder="Ключ із дозволом писати" autoComplete="new-password" />
             <p className="text-xs text-slate-500 mt-1">Адмінка сайтів → «API реклами» → біля ключа «Дозволити писати». Якщо поле порожнє, для правок береться ключ на читання.</p>
           </div>
@@ -190,15 +190,24 @@ function SiteKeys({ c, onSaved }) {
   async function save(e) {
     e.preventDefault();
     const data = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
-    if (!Object.keys(data).length) { setMsg('Вставте хоча б один ключ'); return; }
-    try { await api.patchConnection(c.id, data); setF({ readKey: '', writeKey: '' }); setMsg('Збережено'); await onSaved(); } catch (err) { setMsg(err.message); }
+    if (!Object.keys(data).length) { setMsg('Вставте токен'); return; }
+    try { await api.patchConnection(c.id, data); setF({ readKey: '', writeKey: '' }); setMsg('Збережено. Стан підключення перевірено — дивіться позначку вище.'); await onSaved(); } catch (err) { setMsg(err.message); }
   }
   return (
-    <form onSubmit={save} className="grid gap-2 md:grid-cols-[1fr_1fr_auto] mt-3 border-t border-slate-800 pt-3">
-      <input type="password" aria-label="Новий ключ на читання" className="inp font-mono" placeholder="Новий ключ на читання" value={f.readKey} onChange={(e) => setF({ ...f, readKey: e.target.value })} autoComplete="new-password" />
-      <input type="password" aria-label="Ключ для надсилання правок" className="inp font-mono" placeholder="Окремий ключ для правок (необов'язково)" value={f.writeKey} onChange={(e) => setF({ ...f, writeKey: e.target.value })} autoComplete="new-password" />
-      <button className="btn-ghost !py-1.5">Зберегти ключі</button>
-      {msg && <p className="text-xs text-slate-300 md:col-span-3">{msg}</p>}
+    <form onSubmit={save} className="mt-3 border-t border-slate-800 pt-3 space-y-2">
+      <p className="text-xs text-slate-500">Токен беруть в адмінці сайтів: «API реклами» → «Показати ключ». Щоб платформа надсилала правки, увімкніть там біля нього «Дозволити писати». Зараз збережений токен: {c.readKey || 'нема'}.</p>
+      <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] items-end">
+        <div>
+          <label className="lbl" htmlFor={`t-${c.id}`}>Токен API сайтів</label>
+          <input id={`t-${c.id}`} type="password" className="inp font-mono" placeholder="Вставте токен" value={f.readKey} onChange={(e) => setF({ ...f, readKey: e.target.value })} autoComplete="new-password" />
+        </div>
+        <div>
+          <label className="lbl" htmlFor={`w-${c.id}`}>Окремий токен для правок (необов'язково)</label>
+          <input id={`w-${c.id}`} type="password" className="inp font-mono" placeholder="Порожньо — той самий" value={f.writeKey} onChange={(e) => setF({ ...f, writeKey: e.target.value })} autoComplete="new-password" />
+        </div>
+        <button className="btn-primary">Зберегти токен</button>
+      </div>
+      {msg && <p className="text-xs text-slate-300">{msg}</p>}
     </form>
   );
 }
