@@ -127,7 +127,9 @@ async function syncFlowsStages(conn) {
         await db.step.upsert({ where: { elementId_key: { elementId: el.id, key: st.name } }, update: data, create: { ...data, elementId: el.id, key: st.name } });
       }
     }
-    let after = conn.cursor || null; let total = 0;
+    // Змінився перелік воронок → читаємо з початку: інакше давніші події доданої воронки не потрапили б ніколи.
+    const list = [...slugs].sort().join(',');
+    let after = conn.config?.syncedSlugs === list ? conn.cursor || null : null; let total = 0;
     for (let page = 0; page < 20; page += 1) {
       const { events, next, hasMore } = await flows.fetchEvents(conn.externalId, key, slugs, after);
       for (const e of events) {
@@ -140,6 +142,7 @@ async function syncFlowsStages(conn) {
       await db.connection.update({ where: { id: conn.id }, data: { cursor: after } });
       if (!hasMore || !events.length) break;
     }
+    await db.connection.update({ where: { id: conn.id }, data: { config: { ...(conn.config || {}), syncedSlugs: list } } });
     return { funnels: funnels.length, events: total, cursor: after };
   });
 }
@@ -156,10 +159,10 @@ async function syncCalendar(conn) {
     for (const b of rows) {
       const where = { projectId_elementType_elementRef_sourceId: { projectId: conn.projectId, elementType: 'calendar', elementRef: slug, sourceId: b.id } };
       if (b.status === 'cancelled') { await db.stepEvent.deleteMany({ where: { projectId: conn.projectId, elementType: 'calendar', elementRef: slug, sourceId: b.id } }); dropped += 1; continue; }
-      const clickId = calendar.clickIdOf(b.source);
-      const base = { stepKey: 'booking', ts: new Date(b.createdAt), personKey: `cal:${b.id}`, isTest: false, utmSource: clickId ? 'meta' : null };
+      const clickId = calendar.clickIdOf(b.source); const adExtId = calendar.adIdOf(b.source);
+      const base = { stepKey: 'booking', ts: new Date(b.createdAt), personKey: `cal:${b.id}`, isTest: false, utmSource: clickId || adExtId ? 'meta' : null };
       // Знайдене раніше оголошення повторним читанням не затираємо.
-      await db.stepEvent.upsert({ where, update: { ts: base.ts, ...(clickId ? { clickId } : {}) }, create: { ...base, clickId, projectId: conn.projectId, elementType: 'calendar', elementRef: slug, sourceId: b.id } });
+      await db.stepEvent.upsert({ where, update: { ts: base.ts, ...(clickId ? { clickId } : {}), ...(adExtId ? { adExtId } : {}) }, create: { ...base, clickId, adExtId, projectId: conn.projectId, elementType: 'calendar', elementRef: slug, sourceId: b.id } });
       kept += 1;
     }
     return { bookings: kept, cancelled: dropped };

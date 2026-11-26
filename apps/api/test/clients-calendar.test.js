@@ -16,6 +16,7 @@ let project; let calServer; let mini; let ms; let ad;
 const BOOKINGS = [
   { id: 'b1', createdAt: new Date().toISOString(), status: 'confirmed', source: 'cAAAAAAAAA1', clientName: 'Іван Петренко', clientPhone: '+380501112233', clientTelegram: '@ivan' },
   { id: 'b2', createdAt: new Date().toISOString(), status: 'confirmed', source: 'bot-karta-sales', clientName: 'Марія', clientPhone: '+380671112233' },
+  { id: 'b4', createdAt: new Date().toISOString(), status: 'confirmed', source: 'a120252778606070776', clientName: 'З реклами' },
   { id: 'b3', createdAt: new Date().toISOString(), status: 'cancelled', source: 'cBBBBBBBBB2', clientName: 'Скасований', clientPhone: '+380931112233' },
 ];
 
@@ -60,12 +61,13 @@ test('календар: записи стають кроком, скасован
   const r = await runProjectSync(project.id, { kinds: ['calendar'] });
   assert.ok(r.ok, JSON.stringify(r));
   const ev = await events({ elementType: 'calendar' });
-  assert.deepStrictEqual(ev.map((e) => e.sourceId).sort(), ['b1', 'b2'], 'скасований запис не рахується');
+  assert.deepStrictEqual(ev.map((e) => e.sourceId).sort(), ['b1', 'b2', 'b4'], 'скасований запис не рахується');
+  assert.strictEqual(ev.find((e) => e.sourceId === 'b4').adExtId, '120252778606070776', 'запис із бота несе номер оголошення');
   assert.strictEqual(ev.find((e) => e.sourceId === 'b1').adExtId, 'x1', 'код заходу cAAAAAAAAA1 → оголошення x1');
   assert.strictEqual(ev.find((e) => e.sourceId === 'b2').adExtId, null, 'запис з бота без коду — без оголошення');
   assert.ok(!JSON.stringify(ev).match(/Петренко|380501112233|@ivan|Марія/), 'персональних даних у базі нема');
   await runProjectSync(project.id, { kinds: ['calendar'] });
-  assert.strictEqual((await events({ elementType: 'calendar' })).length, 2, 'повторне читання не подвоює');
+  assert.strictEqual((await events({ elementType: 'calendar' })).length, 3, 'повторне читання не подвоює');
 });
 
 test('клієнт з Instagram: етапи повідомлень стають подіями, не вище поточного', async () => {
@@ -126,7 +128,7 @@ test('видалення клієнта прибирає його події; ч
   const target = list.clients.find((c) => c.label === 'Оля (інста)');
   await call('DELETE', `/api/clients/${target.id}`);
   assert.strictEqual((await events({ elementType: 'instagram' })).length, 0);
-  assert.strictEqual((await events({ elementType: 'calendar' })).length, 2, 'записи календаря лишились');
+  assert.strictEqual((await events({ elementType: 'calendar' })).length, 3, 'записи календаря лишились');
   assert.strictEqual((await events({ elementType: 'site', stepKey: 'pay_success' })).length, 1, 'оплата сайту лишилась');
   const { keyAllowed, isAllowed } = require('../src/lib/pageAccess');
   assert.ok(!keyAllowed('POST', '/clients') && !keyAllowed('GET', '/clients'), 'ключ воронки клієнтів не бачить');

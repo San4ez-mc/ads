@@ -28,4 +28,7 @@ async function fetchBookings(baseUrl, key) {
 /** Джерело запису з публічної сторінки: «c<код заходу>» (так сторінка отримує його з лендінгу). Усе інше — не реклама. */
 const clickIdOf = (source) => { const m = /^c([A-Za-z0-9]{10})$/.exec(String(source || '')); return m ? m[1] : null; };
 
-module.exports = { check, fetchBookings, clickIdOf };
+/** «a<номер оголошення>» — запис із бота, куди людина прийшла прямо з реклами (воронки Flows). */
+const adIdOf = (source) => /^a(\d{6,40})$/.exec(String(source || ''))?.[1] || null;
+
+module.exports = { check, fetchBookings, clickIdOf, adIdOf };
