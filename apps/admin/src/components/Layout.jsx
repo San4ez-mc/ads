@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import clsx from 'clsx';
 import { useAuthStore } from '../stores/authStore';
+import { api, fmt } from '../api/client';
 
 const NAV = [
   { to: '/', label: 'Карта', page: 'map', end: true },
@@ -21,6 +23,9 @@ export default function Layout() {
   const { user, projects, currentProjectId, setProject, logout, can, currentProject } = useAuthStore();
   const items = NAV.filter((n) => can(n.page));
   const project = currentProject();
+  // Якщо дані реклами не оновлюються, про це видно на кожній сторінці: інакше старі витрати читаються як теперішні.
+  const [stale, setStale] = useState(null);
+  useEffect(() => { api.overview().then((d) => setStale(d.connections.find((c) => c.channel === 'meta' && (c.paused || c.status !== 'ok')) || null)).catch(() => {}); }, [currentProjectId]);
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-slate-800 bg-slate-900/70 backdrop-blur sticky top-0 z-30">
@@ -43,6 +48,7 @@ export default function Layout() {
           </div>
         </div>
       </header>
+      {stale && <div role="status" className="bg-amber-900/40 text-amber-100 text-sm text-center px-4 py-2">Дані реклами не оновлюються ({stale.paused ? 'звернення до Meta призупинені' : 'помилка підключення'}). Витрати й переходи — станом на {fmt.dt(stale.lastSyncAt)}.</div>}
       <main className="flex-1 max-w-[1500px] w-full mx-auto px-4 py-5"><Outlet /></main>
     </div>
   );

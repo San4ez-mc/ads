@@ -4,6 +4,7 @@
 // Порядок: перевірка → (проба? тоді лише запис у журнал) → виклик Meta → перечитування з кабінету → журнал до/після.
 const { db } = require('@ads/db');
 const meta = require('../channels/meta');
+const { localDate, dayStart: localDayStart } = require('../lib/days');
 const { decrypt, scrub } = require('../lib/secrets');
 const { logAction } = require('./journal');
 const { toUah, round2 } = require('../lib/money');
@@ -50,7 +51,7 @@ async function check(project, input, { actor = 'user:' } = {}) {
     if (!conn.secretWrite) reasons.push('Не додано ключ керування (ads_management) у «Підключення». Поточний ключ лише читає.');
   }
 
-  const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  const today = new Date(`${localDate(new Date(), project.timezone)}T00:00:00Z`);
   const spentRows = await db.insightDaily.groupBy({ by: ['currency'], where: { date: today, ad: { projectId: project.id } }, _sum: { spend: true } });
   const spentToday = spentRows.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, project), 0);
   const limit = Number(project.dailyLimitUsd) * Number(project.usdRate);
@@ -115,7 +116,7 @@ async function check(project, input, { actor = 'user:' } = {}) {
   let place = null; // куди й від кого піде нове оголошення
   if (kind === 'add_ad') {
     if (adSet.learningStage === 'LEARNING') reasons.push('(8) Група ще навчається: нові оголошення додавайте, коли навчання закінчиться');
-    const dayStart = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    const dayStart = localDayStart(localDate(new Date(), project.timezone), project.timezone);
     const added = await db.actionLog.count({ where: { projectId: project.id, kind: 'add_ad', status: 'done', createdAt: { gte: dayStart } } });
     const launched = (await db.launch.findMany({ where: { projectId: project.id, createdInMetaAt: { gte: dayStart } } })).reduce((n, l) => n + Object.values(l.ids?.items || {}).filter((i) => i.ad).length, 0);
     if (added + launched >= MAX_ADS_DAY) reasons.push(`(5) Сьогодні вже ${added + launched} нових оголошень: більше ${MAX_ADS_DAY} на добу не можна`);

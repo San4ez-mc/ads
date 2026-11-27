@@ -8,16 +8,17 @@ const { inBundle } = require('./bundles');
 const history = require('../services/adviceHistory');
 const { buildAdvice, dailyReportText } = require('../lib/advice');
 const { toUah, round2 } = require('../lib/money');
+const { localDate } = require('../lib/days');
 
 const router = express.Router();
 
 async function gather(project, q) {
   const p = period(q);
   const map = await buildMapData(project, p, { all: false });
-  const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  const today = new Date(`${localDate(new Date(), project.timezone)}T00:00:00Z`);
   const [todayRows, connections] = await Promise.all([
     db.insightDaily.groupBy({ by: ['currency'], where: { date: today, ad: { projectId: project.id } }, _sum: { spend: true } }),
-    db.connection.findMany({ where: { projectId: project.id }, select: { name: true, status: true, lastError: true } }),
+    db.connection.findMany({ where: { projectId: project.id }, select: { name: true, status: true, lastError: true, config: true, lastSyncAt: true } }),
   ]);
   const todaySpend = round2(todayRows.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, project), 0));
   const limit = round2(Number(project.dailyLimitUsd) * Number(project.usdRate));
@@ -43,8 +44,8 @@ router.get('/advice', asyncHandler(async (req, res) => {
 // Готовий текст для Telegram: воронка Flows лише забирає його й надсилає. Параметр days — за скільки днів зведення (за замовчуванням 1 = вчора).
 router.get('/report/daily', asyncHandler(async (req, res) => {
   const days = Math.max(1, Math.min(14, Number(req.query.days) || 1));
-  const end = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const start = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const end = localDate(new Date(Date.now() - 86400000), req.project.timezone);
+  const start = localDate(new Date(Date.now() - days * 86400000), req.project.timezone);
   const { map, advice, todaySpend, limit } = await gather(req.project, { from: start, to: end });
   const camps = map.campaigns;
   const spend = camps.reduce((s, c) => s + c.spend, 0); const sales = camps.reduce((s, c) => s + c.sales, 0); const revenue = camps.reduce((s, c) => s + c.revenue, 0);
@@ -59,8 +60,13 @@ router.get('/report/daily', asyncHandler(async (req, res) => {
   const upsellCount = camps.reduce((s, c) => s + c.adSets.reduce((b, st) => b + st.ads.reduce((q, a) => q + (a.upsellCount || 0), 0), 0), 0);
   const upsellRevenue = camps.reduce((s, c) => s + c.adSets.reduce((b, st) => b + st.ads.reduce((q, a) => q + (a.upsellRevenue || 0), 0), 0), 0);
   const totals = { spend, linkClicks, sales, revenue, upsellCount, upsellRevenue, saleCost: sales ? round2(spend / sales) : null, target: map.target, todaySpend, todayLimit: limit };
+  // Хто дійшов із реклами: перший крок кожного сайту чи бота, лише люди з відомим оголошенням.
+  const arrived = map.elements.map((e) => {
+    const first = e.steps.filter((s) => s.branch !== 'side').sort((a, b) => a.order - b.order)[0];
+    return { name: e.name, people: first ? Object.values(first.byAd || {}).reduce((a, n) => a + n, 0) : 0 };
+  }).filter((a) => a.people > 0);
   const label = start === end ? end : `${start} — ${end}`;
-  res.json({ ok: true, data: { empty: camps.length === 0, text: dailyReportText(req.project, label, totals, advice, bundles), adviceCount: advice.filter((i) => i.severity !== 'info').length, chatId: req.project.reportChatId || null } });
+  res.json({ ok: true, data: { empty: camps.length === 0, text: dailyReportText(req.project, label, totals, advice, bundles, arrived), adviceCount: advice.filter((i) => i.severity !== 'info').length, chatId: req.project.reportChatId || null } });
 }));
 
 module.exports = router;

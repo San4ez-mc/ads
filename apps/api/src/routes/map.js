@@ -13,6 +13,7 @@ const meta = require('../channels/meta');
 const { decrypt, scrub } = require('../lib/secrets');
 const { analyze } = require('../lib/analyze');
 const { rulesOf } = require('../lib/rules');
+const { eventRange } = require('../lib/days');
 const { library } = require('../services/library');
 
 const router = express.Router();
@@ -22,6 +23,7 @@ const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } 
 async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
   const target = project.targetSaleCost === null ? null : Number(project.targetSaleCost);
   const rules = rulesOf(project);
+  const when = eventRange(p.from, p.to, project.timezone);
   const bundle = bundleId ? await db.bundle.findFirst({ where: { id: String(bundleId), projectId: project.id } }) : null;
   const [allRows, allElements, counts] = await Promise.all([
     adRows(project, p, { onlyActive: !all }),
@@ -31,7 +33,7 @@ async function buildMapData(project, p, { all = false, bundleId = null } = {}) {
       SELECT element_type AS "type", element_ref AS "ref", step_key AS "step", ad_ext_id AS "ad",
              count(DISTINCT coalesce(person_key, source_id))::int AS "people", coalesce(sum(amount), 0)::float AS "amount"
       FROM step_events
-      WHERE project_id = ${project.id} AND is_test = false AND ts >= ${p.gte} AND ts < ${new Date(p.lte.getTime() + 86400000)}
+      WHERE project_id = ${project.id} AND is_test = false AND ts >= ${when.gte} AND ts < ${when.lt}
       GROUP BY 1, 2, 3, 4`),
   ]);
 

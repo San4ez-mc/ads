@@ -4,6 +4,7 @@
 const { round2 } = require('./money');
 const { rulesOf } = require('./rules');
 
+const kyiv = (d) => new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(d));
 const SEV = { high: 3, mid: 2, low: 1, info: 0 };
 const grn = (n) => `${Math.round(n).toLocaleString('uk-UA')} грн`;
 
@@ -17,6 +18,7 @@ function buildAdvice(map, ctx) {
   if (!target) add({ kind: 'setup', severity: 'high', title: 'Задайте, скільки готові платити за клієнта', text: 'Без цього не можна сказати, що працює, а що ні. Налаштування → «Як визначати переможця».' });
 
   for (const c of ctx.connections || []) {
+    if (c.config?.paused) { add({ kind: 'connection', severity: 'high', title: 'Дані реклами не оновлюються', text: `Звернення до Meta призупинені. Витрати й переходи${c.lastSyncAt ? ` після ${kyiv(c.lastSyncAt)}` : ''} не враховані: ціну людини й клієнта зараз порахувати не можна.` }); continue; }
     if (c.status === 'error' || c.status === 'blocked') add({ kind: 'connection', severity: 'high', title: `Підключення «${c.name}» не працює`, text: c.lastError || 'Перевірте ключ у розділі «Підключення».' });
   }
 
@@ -79,11 +81,12 @@ function buildAdvice(map, ctx) {
 }
 
 /** Текст щоденного звіту для Telegram (HTML). Лише цифри й поради; кнопки додає воронка. */
-function dailyReportText(project, day, totals, advice, bundles) {
+function dailyReportText(project, day, totals, advice, bundles, arrived = []) {
   const lines = [];
   lines.push(`<b>${escapeHtml(project.name)}</b> · ${escapeHtml(day)}`);
   lines.push(`Витрачено <b>${grn(totals.spend)}</b> · переходи ${totals.linkClicks} · клієнти <b>${totals.sales}</b>${totals.sales ? ` на ${grn(totals.revenue)}` : ''}`);
   lines.push(totals.saleCost ? `Ціна клієнта <b>${grn(totals.saleCost)}</b>${totals.target ? ` (ціль ${grn(totals.target)})` : ''}` : `Ціна клієнта — ще нема клієнтів${totals.target ? ` (ціль ${grn(totals.target)})` : ''}`);
+  if (arrived.length) lines.push(`Прийшли з реклами: ${arrived.map((a) => `${escapeHtml(a.name)} — <b>${a.people}</b>`).join('; ')}`);
   if (totals.upsellCount) lines.push(`Продажі далі (дорожчі продукти): ${totals.upsellCount} на ${grn(totals.upsellRevenue)}`);
   if (totals.todayLimit) lines.push(`Сьогодні: ${grn(totals.todaySpend)} з ліміту ${grn(totals.todayLimit)}`);
   const live = (bundles || []).filter((b) => ['test', 'works', 'scale'].includes(b.status));

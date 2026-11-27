@@ -8,13 +8,14 @@ const { logAction } = require('../services/journal');
 const { toUah, round2 } = require('../lib/money');
 const { saleSteps, isPayment, countClients } = require('../lib/sales');
 const describe = require('../lib/describe');
+const { localDate, eventRange } = require('../lib/days');
 
 const router = express.Router();
 
 /** Період із запиту: from/to YYYY-MM-DD включно; за замовчуванням останні 7 днів. Колонка-дата — порівнюємо датами, не моментами. */
 function period(q) {
   const re = /^\d{4}-\d{2}-\d{2}$/;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const to = re.test(q.to || '') ? q.to : today;
   const from = re.test(q.from || '') ? q.from : new Date(new Date(`${to}T00:00:00Z`).getTime() - 6 * 86400000).toISOString().slice(0, 10);
   if (from > to) throw new ValidationError('Початок періоду пізніше за кінець');
@@ -35,7 +36,7 @@ async function adRows(project, p, { onlyActive } = {}) {
   }
   const ads = await db.ad.findMany({ where: { projectId: project.id }, include: { campaign: { select: { id: true, name: true, externalId: true } }, adSet: { select: { id: true, name: true, externalId: true, dailyBudget: true, learningStage: true, targeting: true } } }, orderBy: { extCreatedAt: 'desc' } });
   // Продажі й кроки з наших джерел (сайт тощо) за номером оголошення.
-  const steps = await db.stepEvent.groupBy({ by: ['adExtId', 'stepKey', 'elementType', 'elementRef'], where: { projectId: project.id, isTest: false, adExtId: { not: null }, ts: { gte: p.gte, lt: new Date(p.lte.getTime() + 86400000) } }, _count: { _all: true }, _sum: { amount: true } });
+  const steps = await db.stepEvent.groupBy({ by: ['adExtId', 'stepKey', 'elementType', 'elementRef'], where: { projectId: project.id, isTest: false, adExtId: { not: null }, ts: eventRange(p.from, p.to, project.timezone) }, _count: { _all: true }, _sum: { amount: true } });
   const sale = await saleSteps(project.id);
   const byExt = new Map();
   for (const s of steps) {
@@ -47,7 +48,7 @@ async function adRows(project, p, { onlyActive } = {}) {
   }
   // sales = клієнти (люди, які заплатили), а не кількість подій: оплат мало, тож читаємо їх поіменно ключами.
   const payKeys = [...new Set(steps.filter((s) => isPayment(sale, s)).map((s) => s.stepKey))];
-  const paid = payKeys.length ? await db.stepEvent.findMany({ where: { projectId: project.id, isTest: false, adExtId: { not: null }, stepKey: { in: payKeys }, ts: { gte: p.gte, lt: new Date(p.lte.getTime() + 86400000) } }, select: { adExtId: true, personKey: true, sourceId: true, stepKey: true, elementType: true, elementRef: true } }) : [];
+  const paid = payKeys.length ? await db.stepEvent.findMany({ where: { projectId: project.id, isTest: false, adExtId: { not: null }, stepKey: { in: payKeys }, ts: eventRange(p.from, p.to, project.timezone) }, select: { adExtId: true, personKey: true, sourceId: true, stepKey: true, elementType: true, elementRef: true } }) : [];
   for (const [adExtId, f] of byExt) f.sales = countClients(sale, paid.filter((e) => e.adExtId === adExtId));
   return ads.map((a) => {
     const m = byAd.get(a.id) || { spendUah: 0, impressions: 0, clicks: 0, linkClicks: 0 };
@@ -75,12 +76,12 @@ router.get('/overview', asyncHandler(async (req, res) => {
   const p = period(req.query);
   const rows = await adRows(req.project, p, {});
   const t = rows.reduce((a, r) => ({ spend: a.spend + r.spend, impressions: a.impressions + r.impressions, linkClicks: a.linkClicks + r.linkClicks, sales: a.sales + r.sales, revenue: a.revenue + r.revenue }), { spend: 0, impressions: 0, linkClicks: 0, sales: 0, revenue: 0 });
-  const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  const today = new Date(`${localDate(new Date(), req.project.timezone)}T00:00:00Z`);
   const todayRows = await db.insightDaily.groupBy({ by: ['currency'], where: { date: today, ad: { projectId: req.project.id } }, _sum: { spend: true } });
   const spentTodayUah = todayRows.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, req.project), 0);
   const limitUah = Number(req.project.dailyLimitUsd) * Number(req.project.usdRate);
   const [connections, lastRun] = await Promise.all([
-    db.connection.findMany({ where: { projectId: req.project.id }, select: { id: true, channel: true, name: true, status: true, lastSyncAt: true, lastError: true } }),
+    db.connection.findMany({ where: { projectId: req.project.id }, select: { id: true, channel: true, name: true, status: true, lastSyncAt: true, lastError: true, config: true } }),
     db.syncRun.findFirst({ where: { projectId: req.project.id }, orderBy: { startedAt: 'desc' } }),
   ]);
   res.json({ ok: true, data: {
@@ -89,7 +90,8 @@ router.get('/overview', asyncHandler(async (req, res) => {
     counts: { ads: rows.length, running: rows.filter((r) => r.running).length },
     today: { spend: round2(spentTodayUah), limit: round2(limitUah), limitUsd: Number(req.project.dailyLimitUsd), overLimit: limitUah > 0 && spentTodayUah > limitUah },
     target: req.project.targetSaleCost === null ? null : Number(req.project.targetSaleCost),
-    connections, lastSync: lastRun ? { kind: lastRun.kind, status: lastRun.status, at: lastRun.finishedAt || lastRun.startedAt, error: lastRun.error } : null,
+    // Налаштування підключень назовні не віддаємо: лише чи призупинені звернення.
+    connections: connections.map(({ config, ...c }) => ({ ...c, paused: !!config?.paused })), lastSync: lastRun ? { kind: lastRun.kind, status: lastRun.status, at: lastRun.finishedAt || lastRun.startedAt, error: lastRun.error } : null,
   } });
 }));
 

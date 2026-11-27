@@ -8,6 +8,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { logAction } = require('../services/journal');
 const { toUah, round2 } = require('../lib/money');
 const { saleSteps, isPayment, countClients } = require('../lib/sales');
+const { localDate, eventRange } = require('../lib/days');
 
 const router = express.Router();
 const STATUSES = ['planned', 'running', 'won', 'lost', 'stopped'];
@@ -36,10 +37,10 @@ function parse(b, { partial } = {}) {
 async function measure(project, e) {
   const ids = Array.isArray(e.adExtIds) ? e.adExtIds : [];
   if (!ids.length || !e.dateFrom) return null;
-  const to = e.dateTo || date(new Date().toISOString().slice(0, 10));
+  const to = e.dateTo || date(localDate(new Date(), project.timezone));
   const [sums, events, elements] = await Promise.all([
     db.insightDaily.groupBy({ by: ['currency'], where: { date: { gte: e.dateFrom, lte: to }, ad: { projectId: project.id, externalId: { in: ids } } }, _sum: { spend: true, impressions: true, linkClicks: true } }),
-    db.stepEvent.findMany({ where: { projectId: project.id, isTest: false, adExtId: { in: ids }, ts: { gte: e.dateFrom, lt: new Date(to.getTime() + 86400000) } }, select: { elementType: true, elementRef: true, stepKey: true, personKey: true, sourceId: true, amount: true } }),
+    db.stepEvent.findMany({ where: { projectId: project.id, isTest: false, adExtId: { in: ids }, ts: eventRange(day(e.dateFrom), day(to), project.timezone) }, select: { elementType: true, elementRef: true, stepKey: true, personKey: true, sourceId: true, amount: true } }),
     db.element.findMany({ where: { projectId: project.id }, include: { steps: true } }),
   ]);
   const people = new Map();
@@ -95,10 +96,10 @@ router.patch('/experiments/:id', asyncHandler(async (req, res) => {
   if (data.code && data.code !== cur.code && await db.experiment.findFirst({ where: { projectId: req.project.id, code: data.code } })) throw new ConflictError(`Код ${data.code} уже зайнятий`);
   if (SAME.some((k) => data[k] !== undefined)) await guardDuplicate(req.project.id, next, cur.id, req.body?.force === true);
   if (data.status && data.status !== cur.status) {
-    if (data.status === 'running') { data.dateFrom ||= cur.dateFrom || date(new Date().toISOString().slice(0, 10)); data.dateTo = null; data.result = null; }
+    if (data.status === 'running') { data.dateFrom ||= cur.dateFrom || date(localDate(new Date(), req.project.timezone)); data.dateTo = null; data.result = null; }
     if (CLOSED.includes(data.status) && !CLOSED.includes(cur.status)) {
       if (!next.conclusion) throw new ValidationError('Перед тим як закрити тест, запишіть висновок: що дізнались');
-      data.dateTo ||= cur.dateTo || date(new Date().toISOString().slice(0, 10));
+      data.dateTo ||= cur.dateTo || date(localDate(new Date(), req.project.timezone));
       data.result = await measure(req.project, { ...next, dateTo: data.dateTo }) ?? undefined;
     }
   }

@@ -8,6 +8,7 @@ const { db } = require('@ads/db');
 const logger = require('@ads/logger');
 const { ValidationError } = require('@ads/errors');
 const meta = require('../channels/meta');
+const { localDate, dayStart: localDayStart } = require('../lib/days');
 const policy = require('../lib/metaPolicy');
 const c2 = require('../channels/content2');
 const { decrypt, scrub } = require('../lib/secrets');
@@ -130,7 +131,7 @@ async function activeDailyUah(project, exceptLaunchId) {
 }
 
 async function spentTodayUah(project) {
-  const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  const today = new Date(`${localDate(new Date(), project.timezone)}T00:00:00Z`);
   const rows = await db.insightDaily.groupBy({ by: ['currency'], where: { date: today, ad: { projectId: project.id } }, _sum: { spend: true } });
   return rows.reduce((a, r) => a + toUah(Number(r._sum.spend || 0), r.currency, project), 0);
 }
@@ -182,7 +183,7 @@ async function check(project, launch, { actor = 'user:' } = {}) {
   for (const why of await policy.checkDestination(dest, { domains: await policy.projectDomains(db, project.id) })) reasons.push(`(Meta) ${why}`);
 
   // (5) Денна кількість нового. Ця ж кампанія при повторі вдруге не рахується.
-  const dayStart = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  const dayStart = localDayStart(localDate(new Date(), project.timezone), project.timezone);
   const today = await db.launch.findMany({ where: { projectId: project.id, createdInMetaAt: { gte: dayStart }, id: { not: launch.id || '' } } });
   const adsToday = today.reduce((a, l) => a + Object.values(l.ids?.items || {}).filter((i) => i.ad).length, 0);
   if (today.length >= MAX_CAMPAIGNS_DAY) reasons.push(`(5) Сьогодні вже створено ${today.length} кампанії: більше ${MAX_CAMPAIGNS_DAY} на добу не можна`);
